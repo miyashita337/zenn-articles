@@ -1,0 +1,15 @@
+# Node
+node_modules/
+package-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Zenn local drafts (if any)
+.review-checklist/
