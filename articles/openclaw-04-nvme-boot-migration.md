@@ -81,7 +81,7 @@ $ timeout 10 xvfb-run -a piclone --help
 EXIT: 124  # timeout 強制終了
 ```
 
-Xvfb 上で X server は立つが、piclone は GUI イベントループに入って **click 待ち** になるため、`--help` を読まずに止まる。**この事実関係が記事の山場**。
+Xvfb 上で X server は立つが、piclone は GUI イベントループに入って **click 待ち** になるため、`--help` を読まずに止まる。
 
 ### 2.3 NVMe の存在確認 (前作業)
 

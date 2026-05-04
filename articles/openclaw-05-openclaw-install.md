@@ -89,7 +89,7 @@ OPENCLAW_DRY_RUN=1 bash /tmp/openclaw-install.sh \
 | **B** | 公式 git install (username の HOME に直接) | コードは読める | 個人ユーザー直起動のため compromise 時の被害大 |
 | **C-1 (採用)** | git install → `/opt/openclaw` に rsync 昇格 → `openclaw` user で起動 | 透明性 + blast radius 限定 + update 経路もスクリプト化容易 | 公式想定外なので自前 unit が必要 |
 
-**C-1 を採用**。 理由は `git diff v1.x v1.y` で更新差分を読める透明性と、**system user で起動することで個人ユーザーの SSH 鍵 / Tailscale 認証 / git 履歴が compromise 時に守られる** 設計。
+採用したのは **C-1**。決め手は 2 つで、`git diff v1.x v1.y` でアップデートの中身がそのまま読めるのと、**`openclaw` という system user で動かしておけば、もし乗っ取られても個人ユーザーの SSH 鍵 / Tailscale 認証 / git 履歴は巻き込まれない** から。
 
 ## Step 2: install + CLI 動作確認
 
@@ -141,7 +141,7 @@ echo "OPENCLAW_GATEWAY_TOKEN=${TOKEN}" \
 ```
 
 :::message alert
-**ここで 1 回ハマった**: 当初は heredoc (`sudo tee /etc/openclaw/openclaw.env <<EOF ... EOF`) で書こうとしたが、SSH 越しに `iTerm2 → hostname` の paste を経由するとインデントが混入し、終端 `EOF` が認識されず bash が `>` 継続プロンプトで永久 hang した。 **解決策は heredoc を使わず `printf '%s\n' 'line1' 'line2' | sudo tee /path > /dev/null` の単一行パターンに統一**。 RW (rework pattern) として登録済。
+**ここで 1 回ハマった**: 当初は heredoc (`sudo tee /etc/openclaw/openclaw.env <<EOF ... EOF`) で書こうとしたが、SSH 越しに `iTerm2 → hostname` の paste を経由するとインデントが混入し、終端 `EOF` が認識されず bash が `>` 継続プロンプトで永久 hang した。 **解決策は heredoc を使わず `printf '%s\n' 'line1' 'line2' | sudo tee /path > /dev/null` の単一行パターンに統一**。
 :::
 
 ## Step 4: 自前 systemd unit (最小ガード)

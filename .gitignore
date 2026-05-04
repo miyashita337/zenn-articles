@@ -13,3 +13,6 @@ Thumbs.db
 
 # Zenn local drafts (if any)
 .review-checklist/
+
+# Claude Code session internals
+.claude/
