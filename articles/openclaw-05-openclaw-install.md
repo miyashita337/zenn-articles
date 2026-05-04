@@ -8,30 +8,32 @@ published: false
 
 ## TL;DR
 
-1. OpenClaw 公式の `curl https://openclaw.ai/install.sh | bash` を **そのまま流さず一旦 `OPENCLAW_DRY_RUN=1` で監査**。setuid / sudoers 編集 / 隠れた `eval` ゼロ件を確認してから実行
-2. install path は **C-1 方式 (git install を username で完走 → `/opt/openclaw` に rsync 昇格 → system user `openclaw` で動作)** を採用。理由: `git diff` で更新が読める / commit hash で revision pin できる / 公式想定 (current user 直起動) より blast radius が小さい
-3. 公式 `openclaw daemon install` は **current user 用** で `User=openclaw` 指定不可 → **自前 systemd unit** を書く必要あり
-4. **systemd hardening は階層化バッチで投入**: Tier A (OS 隔離 13 項目) + Tier B (capability 全削除 + clock/host/proc 保護 10 項目) + Tier B-2 (SystemCallFilter deny-list) + Tier C (リソース制限 5 項目)
-5. **`systemd-analyze security` スコア: 9.0 UNSAFE 😨 → 1.4 OK 🙂** (84% 改善、所要 30 分)
-6. ハマり 2 件: (a) `ProtectSystem=strict` で /tmp が ro 化 → OpenClaw が「Unsafe fallback OpenClaw temp dir」で起動失敗 → `PrivateTmp=yes` 追加で解消、(b) sudoers.d への paste で `\` 行継続にインデント混入 → SSH stdin 経由で /tmp に書いて `sudo install` で配置の手法で回避
-7. 副産物: AI agent (Claude Code) が **NOPASSWD sudoers + SSH 自動操作** で 30 分の hardening 作業をユーザー操作ほぼゼロで完走できた
+今回試してわかったことは以下です。
+
+- OpenClaw 公式の `curl https://openclaw.ai/install.sh | bash` を、**そのまま流さず一旦 `OPENCLAW_DRY_RUN=1` で監査** しました。setuid / sudoers 編集 / 隠れた `eval` がゼロ件であることを確認してから実行しています
+- install path は **C-1 方式** (git install を username で完走 → `/opt/openclaw` に rsync 昇格 → system user `openclaw` で動作) を採用しました。理由は、`git diff` で更新が読めること、commit hash で revision pin できること、公式想定の current user 直起動より blast radius が小さいことの 3 点です
+- 公式の `openclaw daemon install` は **current user 用** で `User=openclaw` 指定ができないので、**自前の systemd unit** を書きました
+- **systemd hardening は階層化バッチで投入** しました。Tier A (OS 隔離 13 項目) + Tier B (capability 全削除 + clock/host/proc 保護 10 項目) + Tier B-2 (SystemCallFilter deny-list) + Tier C (リソース制限 5 項目) の 4 段です
+- **`systemd-analyze security` のスコア: 9.0 UNSAFE 😨 → 1.4 OK 🙂** (84% 改善、所要 30 分) になりました
+- ハマったのは 2 件です。(a) `ProtectSystem=strict` で /tmp が ro 化して OpenClaw が「Unsafe fallback OpenClaw temp dir」で起動失敗 → `PrivateTmp=yes` 追加で解消、(b) sudoers.d への paste で `\` 行継続にインデント混入 → SSH stdin 経由で /tmp に書いて `sudo install` で配置する手法で回避、でした
+- 副産物として、AI agent (Claude Code) が **NOPASSWD sudoers + SSH 自動操作** で 30 分の hardening 作業をユーザー操作ほぼゼロで完走してくれました
 
 ![iTerm2 で Claude Code (左) と hostname (右) を並走させた hardening 作業の様子](/images/openclaw-05/00-cover.png)
 
 ## はじめに
 
-[前回 #4](https://zenn.dev/username/articles/) で NVMe ブート移行を済ませた `hostname` (Raspberry Pi 5) に、本連載の主役である **OpenClaw** を本番運用構成で入れる。
+[前回 #4](https://zenn.dev/harieshokunin/articles/openclaw-04-nvme-boot-migration) で NVMe ブート移行を済ませた `hostname` (Raspberry Pi 5) に、本連載の主役である **OpenClaw** を本番運用構成で入れていきます。
 
-OpenClaw は AI アシスタントと自動化を繋ぐ daemon で、agent 機能 / channels / browser control / cron 等を一台に同居させる。 個人ホームサーバーで動かすため、以下を満たす構成を目指した:
+OpenClaw は AI アシスタントと自動化を繋ぐ daemon で、agent 機能 / channels / browser control / cron 等を一台に同居させられます。個人のホームサーバーで動かしたいので、以下を満たす構成を目指しました。
 
-- **username (個人ユーザー) の権限を持たない** 専用 system user で動作 (compromise 時の被害範囲を限定)
-- **token 認証 + loopback bind** のみ (外部公開は将来 Cloudflare Tunnel 経由)
-- **systemd hardening** で読み書き可能パス・capability・syscall を最小限に
+- **username (個人ユーザー) の権限を持たない** 専用 system user で動作 (もし乗っ取られても被害範囲を限定するため)
+- **token 認証 + loopback bind** のみ (外部公開は将来 Cloudflare Tunnel 経由にする想定)
+- **systemd hardening** で読み書き可能パス・capability・syscall を最小限に絞る
 
-本記事は install から hardening 完了までの一気通貫。 公式 install.sh をそのまま流す (path A) のではなく、**監査 → C-1 方式で /opt 昇格 → 自前 unit + 階層化 hardening** という回り道を採った。 結果、所要は半日 (公式想定の 1 時間ではなく) になったが、**`systemd-analyze security` スコアを 9.0 から 1.4 まで落とせた**。
+本記事は install から hardening 完了までの一気通貫です。公式 install.sh をそのまま流す (path A) のではなく、**監査 → C-1 方式で /opt 昇格 → 自前 unit + 階層化 hardening** という回り道を選びました。結果として所要時間は半日 (公式想定の 1 時間ではなく) になりましたが、**`systemd-analyze security` スコアを 9.0 から 1.4 まで落とせました**。
 
 :::message
-本記事は **個人開発の自宅サーバーでの作業ログ** として書いている。 法人での運用は別途リスク評価が必要。
+本記事は **個人開発の自宅サーバーでの作業ログ** として書いています。法人での運用は別途リスク評価が必要です。
 :::
 
 ## 全体像
@@ -56,7 +58,7 @@ systemd unit:
 
 ## Step 0: install.sh のセキュリティ監査
 
-公式は `curl https://openclaw.ai/install.sh | bash` を案内している。 流す前にざっと監査した:
+公式は `curl https://openclaw.ai/install.sh | bash` を案内していますが、流す前にざっと監査しました。
 
 ```bash
 curl -sSL https://openclaw.ai/install.sh -o /tmp/openclaw-install.sh
@@ -64,12 +66,12 @@ sha256sum /tmp/openclaw-install.sh
 # → 57f025ba0272e2da3238984360e37fad5230bc7cea81854d154a362ea989d49d (93204 bytes)
 ```
 
-- **sha256 / 公式署名は提供されていない** → `Red flag` だが、source code が公開されているので grep 監査で代用
-- `setuid` / `sudoers` 編集 / firewall 操作 / `rm -rf /` / 難読化 (`base64 -d`, `eval $(...)` 等) → ゼロ件
-- 内蔵の `curl|bash` 文字列 7 件 → すべて `print_usage()` の heredoc 内 + `print_homebrew_admin_fix()` の echo 内 (= 文字列表示で実行ではない)
+- **sha256 / 公式署名は提供されていない** → 弱点ですが、source code が公開されているので grep 監査で代用しました
+- `setuid` / `sudoers` 編集 / firewall 操作 / `rm -rf /` / 難読化 (`base64 -d`, `eval $(...)` 等) → ゼロ件でした
+- 内蔵の `curl|bash` 文字列が 7 件ヒット → すべて `print_usage()` の heredoc 内 + `print_homebrew_admin_fix()` の echo 内でした (= 文字列表示なので実行ではなし)
 - `eval` は L91 の `eval "$("$brew_bin" shellenv)"` 1 件のみ (Homebrew 標準パターン)
 
-監査結果: **悪意の混入は見えなかったが、配布側に sha256 / 署名提供がないのは弱い**。 仕方ないので git install path (`--install-method git`) を選び、commit hash で pin する戦略にした。
+監査結果としては、**悪意の混入は見えなかったものの、配布側に sha256 / 署名提供がないのは弱い** という印象でした。仕方ないので、git install path (`--install-method git`) を選んで commit hash で pin する戦略にしました。
 
 ```bash
 OPENCLAW_DRY_RUN=1 bash /tmp/openclaw-install.sh \
@@ -81,7 +83,7 @@ OPENCLAW_DRY_RUN=1 bash /tmp/openclaw-install.sh \
 
 ## Step 1: install path 選択
 
-3 案を比較した:
+3 案を比較しました。
 
 | 方式 | 概要 | メリット | デメリット |
 |---|---|---|---|
@@ -89,7 +91,7 @@ OPENCLAW_DRY_RUN=1 bash /tmp/openclaw-install.sh \
 | **B** | 公式 git install (username の HOME に直接) | コードは読める | 個人ユーザー直起動のため compromise 時の被害大 |
 | **C-1 (採用)** | git install → `/opt/openclaw` に rsync 昇格 → `openclaw` user で起動 | 透明性 + blast radius 限定 + update 経路もスクリプト化容易 | 公式想定外なので自前 unit が必要 |
 
-採用したのは **C-1**。決め手は 2 つで、`git diff v1.x v1.y` でアップデートの中身がそのまま読めるのと、**`openclaw` という system user で動かしておけば、もし乗っ取られても個人ユーザーの SSH 鍵 / Tailscale 認証 / git 履歴は巻き込まれない** から。
+採用したのは **C-1** です。決め手は 2 つで、`git diff v1.x v1.y` でアップデートの中身がそのまま読めるのと、**`openclaw` という system user で動かしておけば、もし乗っ取られても個人ユーザーの SSH 鍵 / Tailscale 認証 / git 履歴は巻き込まれない** からでした。
 
 ## Step 2: install + CLI 動作確認
 
@@ -102,9 +104,9 @@ openclaw --version
 # → OpenClaw 2026.5.4 (b8f6e16)
 ```
 
-サブコマンド多数: `acp / agent / agents / approvals / backup / capability / channels / chat / clawbot / commitments / completion / config / configure / crestodian / cron / daemon / dashboard / devices / directory / dns / docs / doctor / exec-policy / gateway / health / help / hooks / infer / logs / mcp / memory / ...`
+サブコマンドはたくさんあります: `acp / agent / agents / approvals / backup / capability / channels / chat / clawbot / commitments / completion / config / configure / crestodian / cron / daemon / dashboard / devices / directory / dns / docs / doctor / exec-policy / gateway / health / help / hooks / infer / logs / mcp / memory / ...`。
 
-`openclaw daemon install` は launchd / systemd / schtasks 統合で `install/start/stop/restart/status/uninstall` を持つが、**`--user` フラグなし**。 current user 用にしか設定されない設計だった。 → 自前 unit を書くしかない。
+`openclaw daemon install` は launchd / systemd / schtasks 統合で `install/start/stop/restart/status/uninstall` を持っていますが、**`--user` フラグがありません**。current user 用にしか設定されない設計だったので、**自前 unit を書くしかなさそう** でした。
 
 ## Step 3: /opt 昇格 + system user 作成
 
@@ -141,12 +143,12 @@ echo "OPENCLAW_GATEWAY_TOKEN=${TOKEN}" \
 ```
 
 :::message alert
-**ここで 1 回ハマった**: 当初は heredoc (`sudo tee /etc/openclaw/openclaw.env <<EOF ... EOF`) で書こうとしたが、SSH 越しに `iTerm2 → hostname` の paste を経由するとインデントが混入し、終端 `EOF` が認識されず bash が `>` 継続プロンプトで永久 hang した。 **解決策は heredoc を使わず `printf '%s\n' 'line1' 'line2' | sudo tee /path > /dev/null` の単一行パターンに統一**。
+**ここで 1 回ハマりました**。当初は heredoc (`sudo tee /etc/openclaw/openclaw.env <<EOF ... EOF`) で書こうとしましたが、SSH 越しに `iTerm2 → hostname` の paste を経由すると、インデントが混入して終端 `EOF` が認識されず、bash が `>` 継続プロンプトのまま永久に hang してしまいました。**解決策は heredoc を使わず `printf '%s\n' 'line1' 'line2' | sudo tee /path > /dev/null` の単一行パターンに統一** することでした。
 :::
 
 ## Step 4: 自前 systemd unit (最小ガード)
 
-最初は最小ガードで起動させて動作確認:
+最初は最小ガードで起動させて、動作確認をしました。
 
 ```ini
 [Unit]
@@ -187,25 +189,25 @@ ss -tlnp | grep 18789
 
 ![daemon 起動成功 + loopback listen の確認 (TODO)](/images/openclaw-05/03-daemon-active.png)
 
-journal で `[gateway] ready` + 7 plugins (acpx / browser / device-pair / file-transfer / memory-core / phone-control / talk-voice) 起動を確認。 ここで **Phase 3 完了**。
+journal で `[gateway] ready` と 7 plugins (acpx / browser / device-pair / file-transfer / memory-core / phone-control / talk-voice) の起動を確認できました。ここで **Phase 3 完了** です。
 
 ## Step 5: systemd hardening 階層化バッチ投入
 
-公式チュートリアル (および我々の元計画) は「**1 項目ずつ追加 → 1 時間 journal 観察 → 代表機能テスト → 次へ**」の正攻法。 10 項目 × 1 時間 = 10+ 時間。
+公式チュートリアル (および当初の自分の計画) は「**1 項目ずつ追加 → 1 時間 journal 観察 → 代表機能テスト → 次へ**」という正攻法でした。10 項目 × 1 時間 = 10 時間以上かかる計算です。
 
-これを **リスク階層化バッチ** に再設計した:
+これを **リスク階層化バッチ** に再設計しました。
 
 | Tier | 項目 | 戦略 | 時間 |
 |---|---|---|---|
 | **A (OS 隔離、安全)** | `ProtectSystem=strict` / `ProtectHome=yes` / `Protect{Kernel,Control}*` / `LockPersonality` / `Restrict{SUIDSGID,Namespaces,Realtime}` / `RemoveIPC` / `SystemCallArchitectures=native` / `ReadWritePaths=...` / `PrivateTmp=yes` | **一括投入 + smoke test 5-10 分** | 20 分 |
-| **B (capability + clock/proc/host)** | `CapabilityBoundingSet=` (空) / `AmbientCapabilities=` / `RestrictAddressFamilies=...` / `ProtectClock` / `ProtectHostname` / `ProtectProc=invisible` / `ProcSubset=pid` / `PrivateDevices` / `KeyringMode=private` / `UMask=0077` | **一括** (壊れても権限エラーで明確に判明) | 10 分 |
+| **B (capability + clock/proc/host)** | `CapabilityBoundingSet=` (空) / `AmbientCapabilities=` / `RestrictAddressFamilies=...` / `ProtectClock` / `ProtectHostname` / `ProtectProc=invisible` / `ProcSubset=pid` / `PrivateDevices` / `KeyringMode=private` / `UMask=0077` | **一括投入** (壊れても権限エラーで明確に判明する想定) | 10 分 |
 | **B-2 (SystemCallFilter deny-list)** | `SystemCallFilter=~@swap @reboot @raw-io @privileged @mount @module @debug @cpu-emulation @clock @obsolete` / `SystemCallErrorNumber=EPERM` | **deny-list 形式** (Node.js JIT が必要とする `mprotect` 等は許容したまま) | 5 分 |
 | **C (リソース制限)** | `MemoryMax=2G` / `TasksMax=512` / `LimitNOFILE=65536` / `MemoryAccounting=yes` / `TasksAccounting=yes` | **一括** | 5 分 |
-| **保留** | `MemoryDenyWriteExecute=yes` (Node.js V8 JIT は `PROT_WRITE \| PROT_EXEC` を必要とするため破壊リスク高) / `IPAddressDeny=any` (agent の外部 API 呼び出しを block) | 別途検証 | — |
+| **保留** | `MemoryDenyWriteExecute=yes` (Node.js V8 JIT は `PROT_WRITE \| PROT_EXEC` を必要とするため破壊リスク高) / `IPAddressDeny=any` (agent の外部 API 呼び出しを block する) | 別途検証 | — |
 
 ### Tier A 投入直後にハマったやつ
 
-`ProtectSystem=strict` を入れた瞬間 daemon が crash loop に陥った。 journal:
+`ProtectSystem=strict` を入れた瞬間、daemon が crash loop に陥りました。journal の出力はこんな感じです。
 
 ```
 [openclaw] Failed to start CLI: Error: Unsafe fallback OpenClaw temp dir: /tmp/openclaw-999
@@ -214,17 +216,17 @@ journal で `[gateway] ready` + 7 plugins (acpx / browser / device-pair / file-t
     at resolveDefaultLogDir (...)
 ```
 
-**原因**: `ProtectSystem=strict` は **/usr /boot /etc に加えて /var (および systemd によっては /tmp も) を ro 化** する。 OpenClaw のログ書き出し先が `/tmp/openclaw-<UID>` で、ここが ro になると "Unsafe fallback" 例外が飛ぶ仕様だった。
+**原因**は、`ProtectSystem=strict` が **/usr /boot /etc に加えて /var (および systemd によっては /tmp も) を ro 化** することでした。OpenClaw のログ書き出し先が `/tmp/openclaw-<UID>` で、ここが ro になると "Unsafe fallback" 例外が飛ぶ仕様だったようです。
 
-**解決**: `PrivateTmp=yes` を追加。 これで daemon に**専用の隔離された /tmp namespace** が割り当てられ、書き込み可能になる (副産物としてログ path が `/tmp/openclaw-999/` → `/tmp/openclaw/` に変化、UID prefix が不要になる)。
+**解決策**は `PrivateTmp=yes` の追加でした。これで daemon に **専用の隔離された /tmp namespace** が割り当てられて、書き込み可能になります (副産物として、ログ path が `/tmp/openclaw-999/` → `/tmp/openclaw/` に変化して、UID prefix が不要になりました)。
 
 <!-- TODO: /tmp ro 衝突の journal 出力スクショを別途撮影 (現状はテキストのみで説明) -->
 
 ### Tier B/B-2 投入
 
-Tier A が安定したのを確認後、Tier B (capability + clock/proc/host) と Tier B-2 (SystemCallFilter) を続けて投入。 **両 Tier とも一発 PASS**、smoke test (`[gateway] ready` + 7 plugins 起動 + listen 確認) で異常なし。
+Tier A が安定したのを確認してから、Tier B (capability + clock/proc/host) と Tier B-2 (SystemCallFilter) を続けて投入しました。**両 Tier とも一発で PASS** で、smoke test (`[gateway] ready` + 7 plugins 起動 + listen 確認) でも異常なしでした。
 
-最終 unit ファイル (抜粋):
+最終的な unit ファイルの抜粋はこちらです。
 
 ```ini
 # === hardening: Tier A (OS isolation) ===
@@ -283,14 +285,14 @@ sudo systemd-analyze security openclaw-gateway | tail -1
 
 <!-- TODO: systemd-analyze security の最終 1.4 OK 出力スクショを別途撮影 -->
 
-残り 1.4 のうち約 0.7 は `RestrictAddressFamilies=~AF_UNIX/INET/NETLINK` (= daemon が必要としているソケット種別なので削除不可)、約 0.4 は `SystemCallFilter` の `@resources` (Node.js が `setrlimit` で使うかもしれないため残置)、残りは `RootDirectory=` 系 (chroot 風の隔離、コスト対比で見送り)。
+残り 1.4 のうち、約 0.7 は `RestrictAddressFamilies=~AF_UNIX/INET/NETLINK` (= daemon が必要としているソケット種別なので削除できないところ) です。約 0.4 は `SystemCallFilter` の `@resources` (Node.js が `setrlimit` で使うかもしれないので残置)、残りは `RootDirectory=` 系 (chroot 風の隔離、コスト対比で見送り) でした。
 
 ## おまけ: AI agent (Claude Code) で hardening を自律化した話
 
-本セッションは **Claude Code (Opus 4.7)** に hardening 作業を任せた。 SSH と sudo が両方絡む作業なので、以下の経路で自律化:
+本セッションは **Claude Code (Opus 4.7)** に hardening 作業を任せました。SSH と sudo が両方絡む作業なので、以下の経路で自律化しました。
 
 1. **Mac → hostname SSH 許可**: プロジェクトの `.claude/settings.json` の `allow` に `Bash(ssh username@hostname:*)` を追加 (deny の `Bash(ssh:*)` は project scope で削除)
-2. **hostname 側 NOPASSWD**: `/etc/sudoers.d/openclaw-claude-ops` を作って systemd 操作のみ NOPASSWD に。 撤去は `sudo rm` 1 回でゼロに戻る
+2. **hostname 側 NOPASSWD**: `/etc/sudoers.d/openclaw-claude-ops` を作って systemd 操作のみ NOPASSWD にしました。撤去は `sudo rm` 1 回でゼロに戻ります
 
 ```bash
 # 付与 (作業中のみ)
@@ -305,19 +307,19 @@ sudo install -m 0440 -o root -g root /tmp/sudoers /etc/sudoers.d/openclaw-claude
 sudo rm /etc/sudoers.d/openclaw-claude-ops
 ```
 
-これで Claude が `ssh username@hostname "sudo -n systemctl restart openclaw-gateway"` のような sudo 込みコマンドを **passwordless** で打てる。 hardening 作業 30 分のうち、ユーザー操作は **NOPASSWD 付与の 1 回のみ** に圧縮された。
+これで Claude が `ssh username@hostname "sudo -n systemctl restart openclaw-gateway"` のような sudo 込みコマンドを **passwordless** で打てるようになります。hardening 作業 30 分のうち、ユーザー操作は **NOPASSWD 付与の 1 回のみ** に圧縮できました。
 
 :::message alert
-**NOPASSWD は scope を厳密に切り、作業終了後に撤去する**。 全コマンド NOPASSWD は cyber security の伝統的な anti-pattern (compromise 時に root と等価)。 本記事の例では `systemctl <op> openclaw-gateway` / `journalctl -u openclaw-gateway` / `cat|cp|tee /etc/systemd/system/openclaw-gateway.service*` / `systemd-analyze {security,verify}` の operations 限定。
+**NOPASSWD は scope を厳密に切って、作業終了後に必ず撤去する** 運用にしてください。全コマンド NOPASSWD は cyber security の伝統的な anti-pattern です (compromise 時に root と等価)。本記事の例では `systemctl <op> openclaw-gateway` / `journalctl -u openclaw-gateway` / `cat|cp|tee /etc/systemd/system/openclaw-gateway.service*` / `systemd-analyze {security,verify}` の operations 限定にしています。
 :::
 
 ### 撤去フェーズで踏んだ罠: sudo timestamp cache
 
-hardening 完了後に `sudo rm /etc/sudoers.d/openclaw-claude-ops` で NOPASSWD ファイルを削除し、続けて Claude に `sudo -n systemctl daemon-reload` で失効確認させた。 期待は「password 要求で `rc=1`」だが、実測は **`rc=0` で成功**してしまった。
+hardening 完了後に `sudo rm /etc/sudoers.d/openclaw-claude-ops` で NOPASSWD ファイルを削除して、続けて Claude に `sudo -n systemctl daemon-reload` で失効確認をさせました。期待値は「password 要求で `rc=1`」でしたが、実測は **`rc=0` で成功** してしまいました。
 
-原因は `sudo` の **credential timestamp cache** (default 15 分)。 ユーザーが直前に interactive `sudo rm` を打った時点でクレデンシャルがキャッシュされ、その有効期限内に NOPASSWD 失効を検査しても **キャッシュ経由で `sudo -n` が通り続ける**。 NOPASSWD 撤去自体は成功しているが、検査側の見立てを誤らせる。
+原因は `sudo` の **credential timestamp cache** (default 15 分) でした。ユーザーが直前に interactive `sudo rm` を打った時点でクレデンシャルがキャッシュされていて、その有効期限内に NOPASSWD 失効を検査しても **キャッシュ経由で `sudo -n` が通り続けてしまう** わけです。NOPASSWD 撤去自体は成功しているのですが、検査側の見立てを誤らせる挙動でした。
 
-正しい検査手順は `sudo -k` でキャッシュを明示クリアしてから検査すること:
+正しい検査手順は、`sudo -k` でキャッシュを明示的にクリアしてから検査することでした。
 
 ```bash
 # WRONG (false negative: 撤去済みなのに sudo -n が通って「失効してない」と誤断する可能性)
@@ -330,20 +332,20 @@ sudo -k                           # ← ここで cache 破棄
 sudo -n systemctl daemon-reload   # → rc=1 + "パスワードが必要です"
 ```
 
-「撤去 → 即検査」の自動化スクリプトを書く場合は **必ず `sudo -k` を間に挟む**。 これは NOPASSWD 撤去スクリプト共通のチェックパターンとして覚えておく価値がある。
+「撤去 → 即検査」の自動化スクリプトを書く場合は、**必ず `sudo -k` を間に挟む** のが鉄則です。これは NOPASSWD 撤去スクリプト共通のチェックパターンとして覚えておく価値がある気がします。
 
 ### 副次効果: 安全姿勢の完全復帰
 
-撤去後の状態:
+撤去後の状態は以下です。
 
 | 項目 | 状態 |
 |---|---|
-| `/etc/sudoers.d/openclaw-claude-ops` | 削除済 (`ls` で「ファイルがありません」確認) |
+| `/etc/sudoers.d/openclaw-claude-ops` | 削除済 (`ls` で「ファイルがありません」を確認) |
 | `sudo -k && sudo -n systemctl daemon-reload` | `パスワードが必要です` (rc=1) |
-| Claude が wells で root を passwordless で取れる経路 | 完全に閉じた |
-| 残存している Claude の自律権限 | `Bash(ssh username@hostname:*)` (= passwordless ではないため起動時 keychain 経由でも sudo は password 要求に戻った) |
+| Claude が hostname で root を passwordless で取れる経路 | 完全に閉じた |
+| 残存している Claude の自律権限 | `Bash(ssh username@hostname:*)` (= passwordless ではないため、起動時 keychain 経由でも sudo は password 要求に戻ります) |
 
-これで **hardening 作業中だけ blast radius を広げ、終わったら元の最小権限に戻す** という ephemeral elevation のサイクルが完成した。 全コマンド sudo NOPASSWD を恒久的に貼ったままにしないこと。 (このサイクル自体を `op-up.sh` / `op-down.sh` のような対のスクリプトにしておくと心理的な障壁が下がる、というのは別記事ネタ。)
+これで **hardening 作業中だけ blast radius を広げて、終わったら元の最小権限に戻す** という ephemeral elevation のサイクルが完成しました。全コマンド sudo NOPASSWD を恒久的に貼ったままにしないことが大事です。(このサイクル自体を `op-up.sh` / `op-down.sh` のような対のスクリプトにしておくと心理的な障壁が下がる、というのは別記事ネタにしようかと思っています。)
 
 ## ハマりポイントまとめ
 
@@ -351,13 +353,13 @@ sudo -n systemctl daemon-reload   # → rc=1 + "パスワードが必要です"
 |---|---|---|---|
 | 1 | sudoers.d ファイルが `構文エラー` で拒否 | iTerm2 の paste で `\` 行継続後に 2 スペースインデントが混入 | SSH stdin で /tmp に書く → `sudo install` で配置 (paste 不要) |
 | 2 | daemon が `Unsafe fallback OpenClaw temp dir` で crash loop | `ProtectSystem=strict` で /tmp が ro 化 | `PrivateTmp=yes` 追加で daemon 専用 namespace の /tmp を確保 |
-| 3 | `du -sh /opt/openclaw` が `4.0K` と表示される | `chmod -R u=rwX,g=rX,o=` で o= したため username が中身を読めない | `sudo du` で打ち直すと正しく 2.9G。 「rsync が空コピー失敗した」ではなく権限で見えなかっただけ |
+| 3 | `du -sh /opt/openclaw` が `4.0K` と表示される | `chmod -R u=rwX,g=rX,o=` で o= したため username が中身を読めない | `sudo du` で打ち直すと正しく 2.9G。「rsync が空コピー失敗した」ではなく権限で見えなかっただけだった |
 | 4 | `openclaw daemon install --user` フラグなし | 公式は current user 用 service として登録する設計 | 自前 unit を書く |
 | 5 | `openclaw doctor \| head -50` で永久 hang | `doctor` は対話 prompt を出すため stdin 待ちで止まる | Ctrl+C で抜けて非対話実行は別途検討 |
 
 ## 次回予告 (#6 以降)
 
-本記事で daemon 本体 + 権限分離 + hardening は完了。 残課題:
+本記事で daemon 本体 + 権限分離 + hardening は完了しました。残課題は以下です。
 
 - **Web UI build**: `Control UI build failed: Missing UI runner: install pnpm` → username で build → `/opt/openclaw/dist/web` 等を rsync で同梱する設計 (build chain を runtime user に持たせない方が secure)
 - **port forward 動作確認**: Mac から `ssh -N -L 18789:127.0.0.1:18789 username@hostname` → `http://localhost:18789/` で token 認証
