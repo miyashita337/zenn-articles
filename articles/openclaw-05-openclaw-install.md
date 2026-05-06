@@ -79,7 +79,7 @@ OPENCLAW_DRY_RUN=1 bash /tmp/openclaw-install.sh \
 # → "Dry run complete (no changes made)" を確認後、本番実行
 ```
 
-![dry-run 完了画面 (TODO)](/images/openclaw-05/02-install-dryrun.png)
+![dry-run で依存関係チェックが完了し、`Dry run complete (no changes made)` が出るまで進んだ画面](/images/openclaw-05/02-install-dryrun.png)
 
 ## Step 1: install path 選択
 
@@ -150,7 +150,7 @@ echo "OPENCLAW_GATEWAY_TOKEN=${TOKEN}" \
 
 最初は最小ガードで起動させて、動作確認をしました。
 
-```ini
+```ini:openclaw-gateway.service
 [Unit]
 Description=OpenClaw Gateway
 After=network-online.target tailscaled.service
@@ -187,7 +187,7 @@ ss -tlnp | grep 18789
 # → 127.0.0.1:18789 + [::1]:18789 のみ (loopback only)
 ```
 
-![daemon 起動成功 + loopback listen の確認 (TODO)](/images/openclaw-05/03-daemon-active.png)
+![daemon が `active (running)` で起動して、`ss -tlnp` で 127.0.0.1:18789 と [::1]:18789 の loopback listen を確認できた画面](/images/openclaw-05/03-daemon-active.png)
 
 journal で `[gateway] ready` と 7 plugins (acpx / browser / device-pair / file-transfer / memory-core / phone-control / talk-voice) の起動を確認できました。ここで **Phase 3 完了** です。
 
@@ -220,15 +220,13 @@ journal で `[gateway] ready` と 7 plugins (acpx / browser / device-pair / file
 
 **解決策**は `PrivateTmp=yes` の追加でした。これで daemon に **専用の隔離された /tmp namespace** が割り当てられて、書き込み可能になります (副産物として、ログ path が `/tmp/openclaw-999/` → `/tmp/openclaw/` に変化して、UID prefix が不要になりました)。
 
-<!-- TODO: /tmp ro 衝突の journal 出力スクショを別途撮影 (現状はテキストのみで説明) -->
-
 ### Tier B/B-2 投入
 
 Tier A が安定したのを確認してから、Tier B (capability + clock/proc/host) と Tier B-2 (SystemCallFilter) を続けて投入しました。**両 Tier とも一発で PASS** で、smoke test (`[gateway] ready` + 7 plugins 起動 + listen 確認) でも異常なしでした。
 
 最終的な unit ファイルの抜粋はこちらです。
 
-```ini
+```ini:openclaw-gateway.service
 # === hardening: Tier A (OS isolation) ===
 NoNewPrivileges=yes
 ProtectSystem=strict
@@ -283,7 +281,7 @@ sudo systemd-analyze security openclaw-gateway | tail -1
 | Tier B 追加 | 2.9 OK 🙂 | -3.2 |
 | Tier B-2 (SystemCallFilter) 追加 | **1.4 OK 🙂** | -1.5 |
 
-<!-- TODO: systemd-analyze security の最終 1.4 OK 出力スクショを別途撮影 -->
+![systemd-analyze security openclaw-gateway.service の最終出力。`Overall exposure level for openclaw-gateway.service: 1.4 OK 🙂` でハードニング完了](/images/openclaw-05/04-systemd-analyze-final-1.4.png)
 
 残り 1.4 のうち、約 0.7 は `RestrictAddressFamilies=~AF_UNIX/INET/NETLINK` (= daemon が必要としているソケット種別なので削除できないところ) です。約 0.4 は `SystemCallFilter` の `@resources` (Node.js が `setrlimit` で使うかもしれないので残置)、残りは `RootDirectory=` 系 (chroot 風の隔離、コスト対比で見送り) でした。
 
