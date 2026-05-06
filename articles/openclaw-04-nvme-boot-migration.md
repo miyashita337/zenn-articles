@@ -151,6 +151,8 @@ EDITOR='sed -i s/0xf461/0xf416/' rpi-eeprom-config --edit
 
 `rpi-eeprom-config --edit` は内部で `sh -c "$EDITOR $FILE"` を実行するため、**`EDITOR` の値全体が単一コマンド名** として解釈されてしまいます。スペース込みで `not found` でした。
 
+`$EDITOR` は元々 `EDITOR=vi` のような **単一バイナリ名の代入** を想定している環境変数で、`rpi-eeprom-config` 側もそのつもりで `sh -c "$EDITOR $FILE"` の形で素直に exec しています。なのでこちらが「`sed -i s/.../.../`」のように引数付きの 1 行スクリプトを突っ込もうとすると、シェルからは `sed -i s/.../.../` という名前のバイナリを探しに行く動きになって `not found` という、ある意味で正しい挙動になっていました。`VISUAL` 系の変数全般も同じ前提で動いているので、引数を渡したいときは小さな wrapper script を `EDITOR=/path/to/wrapper.sh` で渡すか、後述の `--apply` 経路に切り替えるのが穏当です。
+
 ### 4.2 heredoc の罠: インデントで EOF が認識されない
 
 代替案として helper script を heredoc で書こうとしましたが、**コピペ時のインデント保持** で `EOF` が行頭ではなくスペース付きになり、bash が終端を認識せず ^C 連打で抜ける羽目になりました。
@@ -249,3 +251,33 @@ BOOT_ORDER=0xf416
 - **MBR (msdos) 維持** ← SD 既存テーブルが MBR で、`cmdline.txt` / `fstab` が PARTUUID `XXXXXXXX-NN` 形式に依存していました。GPT に変えるとフォーマット差で書換コストが増えるので避けました
 - **`BOOT_ORDER=0xf416`** ← NVMe(6) → SD(1) → USB(4) → restart(f) の優先順です
 - **SD カードは抜かない** ← NVMe boot の rollback 経路として温存しています
+
+## 付録: rsync コマンド (root / boot 用)
+
+クローン側で実際に使ったオプションです。後追いで作業される方の取っ掛かりになれば。
+
+root のコピー (SD の `/` → NVMe の `/mnt/nvme-root`):
+
+```bash
+sudo rsync -aHAXx --numeric-ids --info=progress2 \
+  --exclude={'/dev/*','/proc/*','/sys/*','/tmp/*','/run/*','/mnt/*','/media/*','/lost+found','/boot/firmware/*'} \
+  / /mnt/nvme-root/
+```
+
+`/boot/firmware` は別ファイルシステム (FAT32) なので、別途 root だけ rsync しました。
+
+```bash
+sudo rsync -aHAXx --numeric-ids --info=progress2 \
+  /boot/firmware/ /mnt/nvme-boot/
+```
+
+オプションの意図は次の通りです。
+
+- `-a` ← `-rlptgoD` のセット。パーミッション / オーナー / 時刻 / シンボリックリンクをまとめて維持してくれます
+- `-H` ← ハードリンクを保ったままコピーします (`/usr/bin` 配下の busybox 系で効きます)
+- `-A` ← POSIX ACL を維持します (Tailscale や systemd 周辺で稀に効きます)
+- `-X` ← 拡張属性 (xattr) を維持します。SELinux/capabilities を使っていなくても、`getcap` 系の権限を落とさないために入れました
+- `-x` ← ファイルシステム境界をまたがない指定です。`/proc` `/sys` 等を `--exclude` で削っているので二重防御ですが、入れておくと安心でした
+- `--numeric-ids` ← UID/GID を数値のままコピーします。クローン先のユーザー DB が同期される前提なら名前解決にしてもよいですが、こちらの方が事故が少なかったです
+
+`-aHAXx` の組み合わせは ArchWiki / `man rsync` でも「フルバックアップ用途の鉄板セット」として紹介されています。FAT32 へのコピーは ACL/xattr が無視されるだけで害はないので、root と boot で同じオプションのままにしておきました。
