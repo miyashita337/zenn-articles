@@ -6,17 +6,13 @@ topics: ["openclaw", "raspberrypi", "systemd", "hardening", "linux"]
 published: true
 ---
 
-## TL;DR
+## TL;DR（5行でまとめると）
 
-今回試してわかったことは以下です。
-
-- OpenClaw 公式の `curl https://openclaw.ai/install.sh | bash` を、**そのまま流さず一旦 `OPENCLAW_DRY_RUN=1` で監査** しました。setuid / sudoers 編集 / 隠れた `eval` がゼロ件であることを確認してから実行しています
-- install path は **C-1 方式** (git install を username で完走 → `/opt/openclaw` に rsync 昇格 → system user `openclaw` で動作) を採用しました。理由は、`git diff` で更新が読めること、commit hash で revision pin できること、公式想定の current user 直起動より blast radius が小さいことの 3 点です
-- 公式の `openclaw daemon install` は **current user 用** で `User=openclaw` 指定ができないので、**自前の systemd unit** を書きました
-- **systemd hardening は階層化バッチで投入** しました。Tier A (OS 隔離 13 項目) + Tier B (capability 全削除 + clock/host/proc 保護 10 項目) + Tier B-2 (SystemCallFilter deny-list) + Tier C (リソース制限 5 項目) の 4 段です
-- **`systemd-analyze security` のスコア: 9.0 UNSAFE 😨 → 1.4 OK 🙂** (84% 改善、所要 30 分) になりました
-- ハマったのは 2 件です。(a) `ProtectSystem=strict` で /tmp が ro 化して OpenClaw が「Unsafe fallback OpenClaw temp dir」で起動失敗 → `PrivateTmp=yes` 追加で解消、(b) sudoers.d への paste で `\` 行継続にインデント混入 → SSH stdin 経由で /tmp に書いて `sudo install` で配置する手法で回避、でした
-- 副産物として、AI agent (Claude Code) が **NOPASSWD sudoers + SSH 自動操作** で 30 分の hardening 作業をユーザー操作ほぼゼロで完走してくれました
+- 公式の install スクリプト (`curl ... | bash`) は **いきなり実行せず**、`OPENCLAW_DRY_RUN=1` を付けて「中で何をするか」を先に表示させてから流しました（setuid・sudoers 改変・隠れた `eval` がゼロ件であることを確認済み）
+- 普段使いの個人ユーザーで動かさず、**専用ユーザー `openclaw` を作って `/opt/openclaw` で動かす** 構成に組み替えました（乗っ取られても作業ファイルに被害が及ばないようにするため）
+- systemd unit に **「daemon に許す動作」を 4 段階で絞り込む設定** を入れて、危険度スコア (`systemd-analyze security`) を **9.0 UNSAFE 😨 → 1.4 OK 🙂** まで下げました（所要 30 分）
+- ハマったのは 2 件: `/tmp` を読取専用にしすぎて起動失敗 → `PrivateTmp=yes` で解消／sudoers にコピペすると改行が混入 → SSH 経由で `sudo install` 配置で回避
+- 仕上げは **AI アシスタント (Claude Code) に期限付きの NOPASSWD sudo を渡して SSH 自動操作** させ、ほぼ手放しで完走させました
 
 ![iTerm2 で Claude Code (左) と hostname (右) を並走させた hardening 作業の様子](/images/openclaw-05/00-cover.png)
 
