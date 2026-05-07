@@ -3,7 +3,7 @@ title: "OpenClaw自動化サーバー構築記 #5 OpenClaw導入 — systemd har
 emoji: "🛡"
 type: "tech"
 topics: ["openclaw", "raspberrypi", "systemd", "hardening", "linux"]
-published: false
+published: true
 ---
 
 ## TL;DR
