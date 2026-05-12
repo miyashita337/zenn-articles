@@ -3,7 +3,7 @@ title: "OpenClaw自動化サーバー構築記 #3 リモートデスクトップ
 emoji: "🖥️"
 type: "tech"
 topics: ["raspberrypi", "vnc", "remotedesktop", "tailscale", "wayland"]
-published: false
+published: true
 ---
 
 ## TL;DR

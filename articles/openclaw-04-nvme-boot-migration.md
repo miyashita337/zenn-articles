@@ -3,7 +3,7 @@ title: "OpenClaw自動化サーバー構築記 #4 NVMe ブート移行 — piclo
 emoji: "💾"
 type: "tech"
 topics: ["raspberrypi", "nvme", "linux", "rsync", "bootloader"]
-published: false
+published: true
 ---
 
 ## TL;DR
