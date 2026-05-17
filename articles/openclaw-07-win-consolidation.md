@@ -138,6 +138,8 @@ bench スクリプトを 5 prompt 投げた実測値です ([openclaw-rpi5-ops/b
 
 ![options-reeval](/images/openclaw-07/07-options-reeval-table.png)
 
+なお、案 A の「Mac の claude-hub だけに Discord を持たせる」構成は別記事 [【導入編】: claude-hub — iPhoneからClaude Codeを操作するDiscord Supervisorシステム](https://zenn.dev/harieshokunin/articles/c6ba085ed070e3) で詳しく書いています。本記事では「夜 Mac を閉じると沈黙する」点だけを採点しています。
+
 (D) から (E) への切り替えのキモは、**Pi5 に OpenClaw を置く限り症状 1, 2 は避けられない** という気づきです。forward 経路を改善しても、Pi5 上で OpenClaw daemon が走っている時点で event loop ブロックは起き続けます。だから **forward を改善するより、Pi5 から OpenClaw 自体を抜く** 方が筋でした。
 
 ただし (E) には前提条件があります:
