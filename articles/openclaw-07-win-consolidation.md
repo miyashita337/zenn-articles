@@ -12,13 +12,11 @@ published: false
 
 ![intro: Pi5 から Win タワーへの引き継ぎ](/images/openclaw-07/08-intro-retreat.png)
 
-## TL;DR（5 行）
+## TL;DR（1 行）
 
-1. **#6 で組んだ (D) ハイブリッド (RPi5 受信 + Win LLM forward) は症状 1〜3 で詰みました**。撤退方針 (E) Win 単独運用への移行を決めたのが本記事の主旨です。
-2. **撤退は判断のみで、実装は止まっています** — 執筆時点で RPi5 上の `openclaw-gateway.service` は **active(running) since 2 days ago**、移行作業は未着手です。
-3. **本日 14 分間 Discord が壊れていました**: Win Tower がオフラインだった 13:33〜13:47 の間、RPi5 OpenClaw は `connect ETIMEDOUT 100.123.241.106:11434` を 825 秒連発し、fallback 設定もなかったので Discord 側はずっとエラー応答でした。
-4. **目標構成 (E) は Win タワー単独で Discord + Ollama を持つ形** — bridge bot は 165 行の Python (`discord-ollama-bridge.py`、すでに [openclaw-rpi5-ops](https://github.com/miyashita337/openclaw-rpi5-ops) repo にコミット済み)。これを Win に deploy できれば完了です。
-5. **移行を止めているのは「Win Tower の常時稼働運用が固まっていないこと」と「新規 Discord Bot Token の発行」の 2 点**。次の #8 でこれらを片付けて実際の cut-over を書きます。
+**Pi5 で OpenClaw を 24h 走らせようとしたらマシンスペックが足りず、Windows タワーに退避することにしました**。本記事はその撤退判断のログで、実装はまだ途中です。
+
+なお、ここで退避先にしている Windows タワーは [初心者が挑む！自作PC組み立て完全ガイド【MAG B650 TOMAHAWK WIFI + RTX 4070 Ti SUPER】](https://zenn.dev/harieshokunin/articles/3aca5170f9ee8a) で組んだマシンです。
 
 ## はじめに
 
