@@ -16,3 +16,10 @@ Thumbs.db
 
 # Claude Code session internals
 .claude/
+
+# PII hook 関連 (Phase 2 で使用予定)
+images-backup/
+.ocr-cache/
+
+# テスト fixture (一時)
+_pii_test_fixture*.md

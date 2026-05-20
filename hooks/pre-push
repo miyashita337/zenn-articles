@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+#
+# pre-push hook — PII 漏洩検知 (Phase 1: テキストのみ)
+#
+# Issue #1: 記事 push 前の PII 漏洩を pre-push hook で自動ブロック
+#
+# stdin: <local ref> <local sha> <remote ref> <remote sha>  (each line)
+# args:  $1 = remote name, $2 = remote URL
+#
+# bypass:
+#   ZENN_PII_OVERRIDE=1 git push   (override の意図を明示)
+
+set -uo pipefail
+
+if [ "${ZENN_PII_OVERRIDE:-0}" = "1" ]; then
+  echo "pre-push: PII check skipped (ZENN_PII_OVERRIDE=1)" >&2
+  exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+DETECT="$REPO_ROOT/hooks/lib/detect-pii.sh"
+
+if [ ! -x "$DETECT" ]; then
+  echo "pre-push: detector not found or not executable: $DETECT" >&2
+  exit 1
+fi
+
+ZERO_SHA="0000000000000000000000000000000000000000"
+declare -a files_to_check=()
+
+collect_changed_files() {
+  local local_sha="$1"
+  local remote_sha="$2"
+
+  if [ "$remote_sha" = "$ZERO_SHA" ]; then
+    # 新規 ref を push: 既存 remote にない commit の変更ファイルだけを対象
+    git log --name-only --diff-filter=AM --pretty=format: "$local_sha" --not --remotes 2>/dev/null \
+      | sed '/^$/d' | sort -u
+  else
+    git diff --name-only --diff-filter=AM "${remote_sha}..${local_sha}" 2>/dev/null | sort -u
+  fi
+}
+
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "${local_sha:-}" ] && continue
+  # branch 削除 (local_sha = zero) はスキップ
+  [ "$local_sha" = "$ZERO_SHA" ] && continue
+
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    # Phase 1 対象: テキスト系ファイルのみ (画像 OCR は Phase 2)
+    case "$f" in
+      articles/*.md|*.md|*.txt|*.yaml|*.yml|*.json)
+        files_to_check+=("$REPO_ROOT/$f")
+        ;;
+    esac
+  done < <(collect_changed_files "$local_sha" "$remote_sha")
+done
+
+if [ ${#files_to_check[@]} -eq 0 ]; then
+  exit 0
+fi
+
+# 重複除去 (bash 3.2 互換: mapfile/readarray は使わず while-read で積む)
+declare -a unique_files=()
+while IFS= read -r line; do
+  [ -n "$line" ] && unique_files+=("$line")
+done < <(printf '%s\n' "${files_to_check[@]}" | sort -u)
+
+start=$(date +%s)
+set +e
+bash "$DETECT" "${unique_files[@]}"
+rc=$?
+set -e
+end=$(date +%s)
+elapsed=$((end - start))
+
+if [ "$rc" -ne 0 ]; then
+  echo "pre-push: blocked (scan: ${elapsed}s)" >&2
+  exit 1
+fi
+
+[ "$elapsed" -ge 5 ] && echo "pre-push: warning, scan took ${elapsed}s (> 5s budget)" >&2
+exit 0

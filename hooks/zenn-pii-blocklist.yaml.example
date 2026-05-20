@@ -1,0 +1,26 @@
+# zenn-pii-blocklist.yaml (テンプレート)
+#
+# このファイルはサンプルです。実 PII 値はリポにコミットしないでください。
+#
+# セットアップ:
+#   cp hooks/zenn-pii-blocklist.yaml.example ~/.config/zenn-pii-blocklist.yaml
+#   $EDITOR ~/.config/zenn-pii-blocklist.yaml
+#
+# 検出は完全一致 (grep -F)。ホスト名/ユーザー名は大文字小文字を区別しません (前処理で lower-case 化)。
+# false positive を避けるため、3 文字未満や一般語 (admin, root, user, host 等) は登録しないでください。
+
+hostnames:
+  # - my-hostname  # 実ホスト名 (FQDN なら短縮形も登録: foo.local → foo)
+
+ips:
+  # - 100.72.229.19   # Tailnet IP
+  # - 192.168.1.42    # LAN IP (グローバル予約レンジ以外)
+
+emails:
+  # - foo@example.com
+
+usernames:
+  # - my-username     # OS のログインユーザー名
+
+tokens:
+  # - ghp_xxxxxxxxxxxxxxxxxxxx  # 漏洩したら即追加
