@@ -48,7 +48,12 @@ mask_for() {
 # blocklist から種別の値配列を取得 (空配列・null 安全)
 load_values() {
   local key="$1"
-  yq -r ".${key}[]? // empty" "$BLOCKLIST" 2>/dev/null
+  local out
+  if ! out=$(yq -r ".${key}[]? // empty" "$BLOCKLIST" 2>&1); then
+    echo "detect-pii: error loading $key from $BLOCKLIST: $out" >&2
+    exit 2
+  fi
+  echo "$out"
 }
 
 HOSTNAMES="$(load_values hostnames)"
