@@ -1,13 +1,16 @@
 # 記事 articles/ai-company-zero-revenue-autopsy.md の出典宣言（PR 添付の内部検証記録。本文の出典行は会長判断で非掲載）。
 # 再検証: bash scripts/verify-sources.sh ai-company-zero-revenue-autopsy
-# 各 id は記事の「出典: … (Sxx)」に対応する。cwd / cmd の環境変数は verify-sources.sh が既定値を与える
+# 本文に「出典:」行は無い（citations_in_article: false。出典が非公開 repo 由来で読者が追えないため、会長判断で非掲載）。
+# 各 id は PR #18 本文の検証結果表に対応する。cwd / cmd の環境変数は verify-sources.sh が既定値を与える
 # （CORP_DIR=~/corp, AGENT_BASE_DIR=~/agent-base, CONVERT_SERVICE_DIR=~/convert-service, GH_OWNER=gh の login）。
 # コマンドは日付・commit で閉じてあり、後日再実行しても同じ値になる。
 slug: ai-company-zero-revenue-autopsy
 measured_at: "2026-09-16"
+citations_in_article: false
+citations_note: "出典の大半が非公開 repo（corp / agent-base 等）由来で読者が追えないため、会長判断で本文の出典行は非掲載。この yaml を PR 添付の検証記録とする"
 sources:
   - id: S01
-    claim: "直近 30 日（2026-08-09〜09-08）に 6 repo で merge された PR の合計 = 145"
+    claim: "直近 1 ヶ月（2026-08-09〜09-08 の 31 日間。測定日 09-08 から 30 日遡った両端含みの範囲）に 6 repo で merge された PR の合計 = 145"
     kind: cmd
     cwd: "$HOME"
     cmd: |
@@ -27,11 +30,17 @@ sources:
     cmd: "ls reports/*.md | sed 's#.*/##; s/\\.md$//' | awk '$1>=\"2026-06-06\" && $1<=\"2026-09-16\"' | wc -l | tr -d ' '"
     expect: "54"
   - id: S05
-    claim: "2026-07-04 の次の朝レポは 2026-08-06（33 日間停止）"
+    claim: "2026-07-04 の次の朝レポは 33 日後の 2026-08-06（無配信は 07-05〜08-05 の 32 日間）"
     kind: cmd
     cwd: "$CORP_DIR"
     cmd: "ls reports/*.md | sed 's#.*/##; s/\\.md$//' | awk '$1>=\"2026-07-01\" && $1<=\"2026-08-06\"' | paste -sd, -"
     expect: "2026-07-04,2026-08-06"
+  - id: S06
+    claim: "朝レポの月別配信日数（2026-06-06〜09-16）= 6 月 11・7 月 1・8 月 26・9 月 16（合計 54 = S04）"
+    kind: cmd
+    cwd: "$CORP_DIR"
+    cmd: "ls reports/*.md | sed 's#.*/##; s/\\.md$//' | awk '$1>=\"2026-06-06\" && $1<=\"2026-09-16\" {print substr($1,1,7)}' | sort | uniq -c | awk '{printf \"%s=%s \", $2,$1}' | sed 's/ $//'"
+    expect: "2026-06=11 2026-07=1 2026-08=26 2026-09=16"
   - id: S07
     claim: "台帳の月別 完了/滞留 = 6 月 32/2、7 月 5/2、8 月 47/18、9 月 1/8"
     kind: cmd
@@ -75,11 +84,11 @@ sources:
     kind: manual
     note: "2026-09-08 の事業レビュー記録（ローカル、git 外）で Stripe API から直接取得した値。corp 朝レポ 2026-09-16「課金 MRR=0 / アクティブ購読=0件」と整合"
   - id: S24
-    claim: "quickconv は 2026-03-10 初コミット、2026-07-05 維持運転、2026-09-16 休業（registry status dormant）"
+    claim: "quickconv は 2026-03-10 初コミット、2026-07-05 維持運転、2026-09-16 休業（registry status dormant。corp commit 46f244e = 2026-09-16 時点の registry.yaml に固定）"
     kind: cmd
     cwd: "$CORP_DIR"
     cmd: |
-      { yq -r '.brands[]|select(.id=="quickconv").status' registry.yaml; git -C "$CONVERT_SERVICE_DIR" log --reverse --format=%ad --date=short | head -1; grep -oE "2026-07-05 会長決定|2026-09-16 副業プラン改定" registry.yaml | sort -u | paste -sd, -; } | paste -sd';' -
+      { git show 46f244e:registry.yaml | yq -r '.brands[]|select(.id=="quickconv").status'; git -C "$CONVERT_SERVICE_DIR" log --reverse --format=%ad --date=short | head -1; git show 46f244e:registry.yaml | grep -oE "2026-07-05 会長決定|2026-09-16 副業プラン改定" | sort -u | paste -sd, -; } | paste -sd';' -
     expect: "dormant;2026-03-10;2026-07-05 会長決定,2026-09-16 副業プラン改定"
   - id: S28
     claim: "corp CLAUDE.md に承認手順・ボタン決裁・安全規約・台帳の不変条件の 4 節がある"
@@ -88,6 +97,6 @@ sources:
     cmd: "grep -cE \"^## (部署へ「実装させる」コマンド手順|朝レポ着信時の決裁と窓口|安全規約|アーキテクチャの不変条件)\" CLAUDE.md"
     expect: "4"
   - id: S32
-    claim: "直近 30 日（2026-08-09〜09-08）の 6 repo 合計 commit 410（main 195）、製品本体 convert-service は commit 12 / PR 5"
+    claim: "直近 1 ヶ月（2026-08-09〜09-08 の 31 日間）の 6 repo 合計 commit 410（main 195）、製品本体 convert-service は commit 12 / PR 5。残り 398 件の作業内容別の内訳は無い（製品 repo 以外に積まれた件数のみ）"
     kind: manual
     note: "2026-09-08 の事業レビュー記録（ローカル、git 外）の System Audit 表。PR merged の列は S01 で再実測済み"

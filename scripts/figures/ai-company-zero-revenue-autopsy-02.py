@@ -26,7 +26,7 @@ OUT = pathlib.Path("images/ai-company-zero-revenue-autopsy/02-five-months-trend.
 MONTHS = ["2026-06", "2026-07", "2026-08", "2026-09\n(〜16日)"]
 EXECUTED = [32, 5, 47, 1]
 STUCK = [2, 2, 18, 8]
-REPORTS = [11, 1, 26, 16]  # 朝レポ配信日数（corp reports/*.md、2026-06-06〜09-16）
+REPORTS = [11, 1, 26, 16]  # 朝レポ配信日数 (S06: corp reports/*.md の月別件数、2026-06-06〜09-16、合計 54 = S04)
 
 # --- 右: 会長判断待ち件数（corp reports/2026-08-25.md〜2026-09-16.md の「⏭ N 件が会長の番」）---
 PENDING = {
@@ -54,7 +54,7 @@ def main() -> None:
     ax1.set_title("月別 dispatch 台帳と朝レポ配信日数", fontsize=11)
     ax1.legend(loc="upper left", fontsize=9, frameon=False)
     ax1.annotate(
-        "7/4→8/6 朝レポ 33 日\nサイレント停止（corp#92）",
+        "7/4 の次の朝レポは 33 日後の 8/6\n（無配信 32 日）サイレント停止",
         xy=(1, 9), xytext=(0.15, 52), fontsize=9, color="#b03030", ha="left",
         arrowprops=dict(arrowstyle="->", color="#b03030"),
     )
@@ -77,7 +77,7 @@ def main() -> None:
         ax2.spines[s].set_visible(False)
 
     fig.suptitle(
-        "一人 AI 会社 5 ヶ月の実測: 売上 ¥0 ／ Stripe 顧客 0 ／ 直近 30 日 PR merged 145",
+        "一人 AI 会社 5 ヶ月の実測: 売上 ¥0 ／ Stripe 顧客 0 ／ 直近 1 ヶ月（8/9〜9/8）PR merged 145",
         fontsize=11, y=1.02,
     )
     fig.tight_layout()

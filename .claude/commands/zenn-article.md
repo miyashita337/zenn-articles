@@ -17,6 +17,7 @@ version: "1.0"
 ## 全 Phase 共通ルール（BLOCKING）
 
 - **推論で数字を書かない**。数値を含む段落の直後に `出典: …（Sxx）` の 1 行を置き、`sources/<slug>.yaml` の id と対応させる
+  - 例外（会長判断のみ）: 出典の大半が非公開 repo 由来で読者が追えないときは本文の出典行を省略できる。その場合 yaml の先頭に `citations_in_article: false` と `citations_note: <理由>` を書き、yaml を PR 添付の検証記録として commit する。`verify-sources.sh` はこの宣言があるときだけ記事⇄yaml の突合を INFO 表示にする（宣言が無ければ不整合は FAIL）。例: 記事 #17（PR #18）
 - **`<!-- 会長: … -->` 型の空欄プレースホルダを記事に残さない**。会長の言葉が要る節は Phase 2 で聞き、Phase 4 で Claude が書く。書いた節の先頭に `<!-- hearing:Hn -->` を置く（会長がどこを直せばよいか分かるように）
 - AI 関与の開示は**書かない**（既定。H5 で会長が変えたときだけ書く）
 - 文体は「です・ます」（既存記事準拠。H6 で変更可）
@@ -39,6 +40,8 @@ Issue が指す素材（corp の reports / dispatches / registry、agent-base �
 ```yaml
 slug: <slug>
 measured_at: "YYYY-MM-DD"
+# citations_in_article: false   # 本文に出典行を置かない例外（会長判断）。citations_note に理由を書く
+# citations_note: "..."
 sources:
   - id: S01
     claim: "記事に書く主張（数値込み）"
@@ -49,7 +52,8 @@ sources:
     expect: "<trim した stdout>"
 ```
 
-- コマンドは**日付範囲・commit で閉じる**（`merged:A..B`、`select(.date<="…")`、`git show <sha>:…`）。翌日再実行しても同じ値になること
+- コマンドは**日付範囲・commit で閉じる**（`merged:A..B`、`select(.date<="…")`、`git show <sha>:…`）。翌日再実行しても同じ値になること。現在のファイルの状態を読む出典（registry の status 等）は測定日の commit に固定する
+- `cwd` / `path` で使える環境変数は `HOME` / `CORP_DIR` / `AGENT_BASE_DIR` / `CONVERT_SERVICE_DIR` / `REPO_ROOT` のみ（`verify-sources.sh` は eval しない。`$(…)` や他の変数は FAIL）。yaml の `cmd` はそのまま実行されるので、他人の branch の yaml を実行する前に `git diff origin/main -- sources/` を読む
 - 自動再実行できない出典（レシート・ローカルのレビュー記録）は `kind: manual` + `note`
 - 書き終えたら `bash scripts/verify-sources.sh <slug>` を実行し、FAIL 0 を確認してから次へ
 - `.gitignore` の `.hearings/` 以外は public になる前提で書く（yaml は commit する）
@@ -88,14 +92,14 @@ Phase 1 の実測から候補を作り、`rules/general/option-presentation.md` 
 | AC | 検証内容 | コマンド | 期待 |
 |---|---|---|---|
 | 1 | 空欄プレースホルダ 0 | `grep -c "<!-- 会長:" articles/<slug>.md` | 0 |
-| 2 | 一人称節にヒアリング印 | `grep -c "<!-- hearing:H" articles/<slug>.md` | 必須質問数以上 |
-| 3 | 出典行に id | `bash scripts/verify-sources.sh <slug>` の WARN | 0 件 |
-| 4 | 出典の再実行 | `bash scripts/verify-sources.sh <slug>` | exit 0 |
+| 2 | 一人称節（H2〜H4）にヒアリング印 | `for h in H2 H3 H4; do grep -c "<!-- hearing:$h -->" articles/<slug>.md; done` | 各 1 以上（会長が本文を自筆した記事は N/A） |
+| 3 | 記事⇄yaml の出典 id 突合 | `bash scripts/verify-sources.sh <slug> 2>&1 \| grep -c "^FAIL:"` | 0（`citations_in_article: false` の記事は INFO 行が出る） |
+| 4 | 出典の再実行 | `bash scripts/verify-sources.sh <slug>` | exit 0（コマンド不一致・突合不整合のどちらも exit 1） |
 | 5 | PII | `bash hooks/lib/detect-pii.sh articles/<slug>.md sources/<slug>.yaml` | exit 0 |
 | 6 | 禁止表現・機密 | `grep -cE "初心者向け\|ジュニアエンジニア向け\|[0-9]{17,20}\|_TOKEN\|WEBHOOK\|/Users/" articles/<slug>.md sources/<slug>.yaml` | 0 |
 | 7 | 非公開のまま | `grep -c "^published: false" articles/<slug>.md` | 1 |
 | 8 | Zenn パース | `curl -sf localhost:8000/api/articles/<slug> \| jq -e '.article.slug=="<slug>" and .article.published==false'` | exit 0 |
-| 9 | 図の再現 | `python3 scripts/figures/<slug>-01.py && test -f images/<slug>/01-*.png` | exit 0 |
+| 9 | 図の再現（記事が参照する全図） | `for f in scripts/figures/<slug>-*.py; do n=${f##*-}; python3 "$f" && ls images/<slug>/${n%.py}-*.png \|\| exit 1; done` | exit 0（生成できない図が 1 つでもあれば exit 1） |
 | 10 | pre-git-check | `make -C ~/agent-base pre-git-check` | PASS |
 
 FAIL → 修正 → 再実行（3 回まで）。全 PASS 後、`npx zenn preview` を会長に見せる（`open http://localhost:8000/articles/<slug>`）。
