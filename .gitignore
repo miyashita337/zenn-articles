@@ -14,8 +14,13 @@ Thumbs.db
 # Zenn local drafts (if any)
 .review-checklist/
 
-# Claude Code session internals
-.claude/
+# Claude Code session internals（commands / rules は git 管理する）
+.claude/*
+!.claude/commands/
+!.claude/rules/
+
+# 記事ヒアリングの生記録（回答に非公開情報を含みうるためローカルのみ）
+.hearings/
 
 # PII hook 関連 (Phase 2 で使用予定)
 images-backup/
