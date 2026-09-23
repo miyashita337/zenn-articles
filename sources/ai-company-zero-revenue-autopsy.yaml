@@ -1,0 +1,93 @@
+# 記事 articles/ai-company-zero-revenue-autopsy.md の出典宣言（PR 添付の内部検証記録。本文の出典行は会長判断で非掲載）。
+# 再検証: bash scripts/verify-sources.sh ai-company-zero-revenue-autopsy
+# 各 id は記事の「出典: … (Sxx)」に対応する。cwd / cmd の環境変数は verify-sources.sh が既定値を与える
+# （CORP_DIR=~/corp, AGENT_BASE_DIR=~/agent-base, CONVERT_SERVICE_DIR=~/convert-service, GH_OWNER=gh の login）。
+# コマンドは日付・commit で閉じてあり、後日再実行しても同じ値になる。
+slug: ai-company-zero-revenue-autopsy
+measured_at: "2026-09-16"
+sources:
+  - id: S01
+    claim: "直近 30 日（2026-08-09〜09-08）に 6 repo で merge された PR の合計 = 145"
+    kind: cmd
+    cwd: "$HOME"
+    cmd: |
+      for r in agent-base corp claude-hub team_salary convert-service claude-context-manager; do gh pr list -R "$GH_OWNER/$r" --state merged --search "merged:2026-08-09..2026-09-08" --limit 500 --json number --jq length; done | paste -sd+ - | bc
+    expect: "145"
+  - id: S02
+    claim: "朝レポ「会長判断待ち」件数（2026-08-25〜09-16 の 23 通）= 合計 153・平均 6.7・最大 17・最小 3"
+    kind: cmd
+    cwd: "$CORP_DIR"
+    cmd: |
+      for d in $(seq -f "2026-08-%02g" 25 31) $(seq -f "2026-09-%02g" 1 16); do grep -oE "⏭ [0-9]+ 件が会長の番" "reports/$d.md" | grep -oE "[0-9]+" | head -1; done | awk '{s+=$1;n++; if($1>mx)mx=$1; if(mn==""||$1<mn)mn=$1} END{printf "n=%d sum=%d avg=%.1f max=%d min=%d\n",n,s,s/n,mx,mn}'
+    expect: "n=23 sum=153 avg=6.7 max=17 min=3"
+  - id: S04
+    claim: "朝レポは 2026-06-06〜09-16 で 54 通"
+    kind: cmd
+    cwd: "$CORP_DIR"
+    cmd: "ls reports/*.md | sed 's#.*/##; s/\\.md$//' | awk '$1>=\"2026-06-06\" && $1<=\"2026-09-16\"' | wc -l | tr -d ' '"
+    expect: "54"
+  - id: S05
+    claim: "2026-07-04 の次の朝レポは 2026-08-06（33 日間停止）"
+    kind: cmd
+    cwd: "$CORP_DIR"
+    cmd: "ls reports/*.md | sed 's#.*/##; s/\\.md$//' | awk '$1>=\"2026-07-01\" && $1<=\"2026-08-06\"' | paste -sd, -"
+    expect: "2026-07-04,2026-08-06"
+  - id: S07
+    claim: "台帳の月別 完了/滞留 = 6 月 32/2、7 月 5/2、8 月 47/18、9 月 1/8"
+    kind: cmd
+    cwd: "$CORP_DIR"
+    cmd: "cat dispatches/2026-0[6-9].jsonl | jq -r 'select(.date<=\"2026-09-16\") | \"\\(.date[0:7]) \\(.state)\"' | sort | uniq -c | awk '{printf \"%s:%s=%s \", $2,$3,$1}' | sed 's/ $//'"
+    expect: "2026-06:dispatched=2 2026-06:executed=32 2026-07:dispatched=2 2026-07:executed=5 2026-08:dispatched=18 2026-08:executed=47 2026-09:dispatched=8 2026-09:executed=1"
+  - id: S14
+    claim: "朝レポは 7:00、watchdog は 8:00（install-schedule.sh の既定値）"
+    kind: cmd
+    cwd: "$CORP_DIR"
+    cmd: "grep -oE 'CORP_SCHEDULE_HOUR:-[0-9]+|CORP_WATCHDOG_HOUR:-[0-9]+' scripts/install-schedule.sh | paste -sd, -"
+    expect: "CORP_SCHEDULE_HOUR:-7,CORP_WATCHDOG_HOUR:-8"
+  - id: S16
+    claim: "手戻りカタログ RW-001〜RW-079 = 79 件"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: "grep -hoE \"^### RW-[0-9]{3}\" rules/general/rework-patterns/*.md | sort -u | awk '$0<=\"### RW-079\"' | wc -l | tr -d ' '"
+    expect: "79"
+  - id: S17
+    claim: "RW-001 の発生日 2026-04-05、RW-079 の発生日 2026-09-02"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: "for n in 001 079; do grep -h -A6 \"^### RW-$n:\" rules/general/rework-patterns/*.md | grep -oE \"発生日\\*\\*: [0-9]{4}-[0-9]{2}-[0-9]{2}\" | head -1 | grep -oE \"[0-9-]+$\"; done | paste -sd, -"
+    expect: "2026-04-05,2026-09-02"
+  - id: S18
+    claim: "RW-001〜079 のカテゴリ = config_error 46 / requirement_drift 17 / logic_error 5 / missing_test 5 / other 3 / security 2 / verification_gap 1"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR/rules/general/rework-patterns"
+    cmd: |
+      grep -hE "^### RW-|\*\*カテゴリ\*\*:" *.md | awk '/^### RW-/{id=$2} /カテゴリ/{ if (id<="RW-079:") {sub(/.*カテゴリ\*\*: */,""); match($0,/^[a-z_]+/); print substr($0,RSTART,RLENGTH)} }' | sort | uniq -c | sort -k1,1nr -k2,2 | awk '{printf "%s=%s ",$2,$1}' | sed 's/ $//'
+    expect: "config_error=46 requirement_drift=17 logic_error=5 missing_test=5 other=3 security=2 verification_gap=1"
+  - id: S21
+    claim: "agent-base の hook = 50 本、settings.json 登録 43（commit 811449f 時点）"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      { git ls-tree -r --name-only 811449f -- hooks | grep -c "^hooks/[^/]*\.sh$"; git show 811449f:settings.json | jq '[.hooks|to_entries[]|.value[]|.hooks[]|.command]|length'; } | paste -sd, -
+    expect: "50,43"
+  - id: S23
+    claim: "Stripe は顧客 0・決済 1 件（$3.99、2026-04-05、返金済み）・MRR 0"
+    kind: manual
+    note: "2026-09-08 の事業レビュー記録（ローカル、git 外）で Stripe API から直接取得した値。corp 朝レポ 2026-09-16「課金 MRR=0 / アクティブ購読=0件」と整合"
+  - id: S24
+    claim: "quickconv は 2026-03-10 初コミット、2026-07-05 維持運転、2026-09-16 休業（registry status dormant）"
+    kind: cmd
+    cwd: "$CORP_DIR"
+    cmd: |
+      { yq -r '.brands[]|select(.id=="quickconv").status' registry.yaml; git -C "$CONVERT_SERVICE_DIR" log --reverse --format=%ad --date=short | head -1; grep -oE "2026-07-05 会長決定|2026-09-16 副業プラン改定" registry.yaml | sort -u | paste -sd, -; } | paste -sd';' -
+    expect: "dormant;2026-03-10;2026-07-05 会長決定,2026-09-16 副業プラン改定"
+  - id: S28
+    claim: "corp CLAUDE.md に承認手順・ボタン決裁・安全規約・台帳の不変条件の 4 節がある"
+    kind: cmd
+    cwd: "$CORP_DIR"
+    cmd: "grep -cE \"^## (部署へ「実装させる」コマンド手順|朝レポ着信時の決裁と窓口|安全規約|アーキテクチャの不変条件)\" CLAUDE.md"
+    expect: "4"
+  - id: S32
+    claim: "直近 30 日（2026-08-09〜09-08）の 6 repo 合計 commit 410（main 195）、製品本体 convert-service は commit 12 / PR 5"
+    kind: manual
+    note: "2026-09-08 の事業レビュー記録（ローカル、git 外）の System Audit 表。PR merged の列は S01 で再実測済み"
