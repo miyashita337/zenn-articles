@@ -25,13 +25,18 @@
 - #2 Tailscale 設定 ssh できるまで
 - #3 リモートデスクトップ (TigerVNC vs Pi Connect)
 
-### 4. Zenn 連携
+### 4. 文体・構成
+
+- 記事を書く前に `docs/style-guide.md` を読む（文体・構成テンプレート・NG 表現）
+- テーマが決まっていないときは how-to 型を推奨案として提案する（根拠は style-guide 1 章）
+
+### 5. Zenn 連携
 
 - Zenn dashboard → GitHub 連携 → `miyashita337/zenn-articles` (main ブランチ)
 - 1 アカウント = 1 連携 repo (公式制約)
 - dashboard 直編集よりも repo 主導 (dashboard 編集は次 push で上書き)
 
-### 5. 関連リポ
+### 6. 関連リポ
 
 - 記事 #1〜#3 のネタ元: [openclaw-rpi5-ops](https://github.com/miyashita337/openclaw-rpi5-ops)
 - スクリプトや config を引用するときは raw.githubusercontent の URL を直接貼る
