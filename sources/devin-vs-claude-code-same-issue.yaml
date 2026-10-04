@@ -173,3 +173,43 @@ sources:
     cmd: |
       gh api repos/{owner}/agent-base/issues/comments/5970573413 --jq .body | grep -c 'Devin が自発的に agent-base の `/impl` スキルを起動。止め指示（コミットまで、main・PR・Issue を見ない）は後から送信'
     expect: "1"
+  - id: S24
+    claim: "通知時刻の記録: Devin は送信成功時だけ記録する。Claude と正解 PR は送信の成否に関係なく記録する（正解 PR は理由として、Pushover 停止中の毎セッション再送を挙げる）"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      for c in deaef4f 7c0dd1f 7138972; do s=$(git show $c:hooks/check-mycontext-staleness.sh); echo "$c $(printf '%s\n' "$s" | grep -cF 'if "$notify_cmd" "MyContext stale" "$msg" >/dev/null 2>&1; then') $(printf '%s\n' "$s" | grep -cF '"$notify_cmd" "MyContext stale" "$msg" >/dev/null 2>&1 || true') $(printf '%s\n' "$s" | grep -cF '送信成否で分岐しない')"; done
+    expect: |-
+      deaef4f 1 0 0
+      7c0dd1f 0 1 0
+      7138972 0 1 1
+  - id: S25
+    claim: "Claude だけが、記録時刻が未来のときに抑制しない分岐と、記録の書き込みに失敗したときの警告を入れた"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      for c in deaef4f 7c0dd1f 7138972; do s=$(git show $c:hooks/check-mycontext-staleness.sh); echo "$c $(printf '%s\n' "$s" | grep -cF '[ "$last" -le "$now" ]') $(printf '%s\n' "$s" | grep -cF '通知 state を書けません')"; done
+    expect: |-
+      deaef4f 0 0
+      7c0dd1f 1 1
+      7138972 0 0
+  - id: S26
+    claim: "正解 PR は判定を should_notify 関数に切り出した。Devin と Claude はどちらも既存の if の中に書き足した"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      for c in deaef4f 7c0dd1f 7138972; do echo "$c $(git show $c:hooks/check-mycontext-staleness.sh | grep -cF 'should_notify() {')"; done
+    expect: |-
+      deaef4f 0
+      7c0dd1f 0
+      7138972 1
+  - id: S27
+    claim: "3 実装とも設定名 MYCONTEXT_NOTIFY_THROTTLE_HOURS / MYCONTEXT_NOTIFY_STATE、既定 24 時間、非数値・壊れた記録は通知する側に倒す点は共通"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      for c in deaef4f 7c0dd1f 7138972; do s=$(git show $c:hooks/check-mycontext-staleness.sh); echo "$c $(printf '%s\n' "$s" | grep -cF 'MYCONTEXT_NOTIFY_THROTTLE_HOURS:-24') $(printf '%s\n' "$s" | grep -cF 'MYCONTEXT_NOTIFY_STATE:-$HOME/.claude/state/mycontext-staleness-last-notify') $(printf '%s\n' "$s" | grep -cE "''\|\*\[!0-9\]\*\)" )"; done
+    expect: |-
+      deaef4f 1 1 3
+      7c0dd1f 1 1 3
+      7138972 1 1 3
