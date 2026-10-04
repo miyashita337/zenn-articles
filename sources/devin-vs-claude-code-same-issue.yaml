@@ -1,0 +1,175 @@
+# 記事 articles/devin-vs-claude-code-same-issue.md の出典宣言。
+# 再検証: bash scripts/verify-sources.sh devin-vs-claude-code-same-issue
+# 数値の正本は agent-base#484 の結果コメント（comment id 5971722850）と AC-2 コメント（5971849715）。
+# 採点テストは commit で閉じた再実行（git archive で各 commit の hooks/ を展開し、マージ後 7138972 のテストを当てる）。
+# gh api の {owner} は cwd のリポから gh が補完する（アカウント名を yaml に書かないため）。
+slug: devin-vs-claude-code-same-issue
+measured_at: "2026-10-04"
+citations_in_article: false
+citations_note: "出典が非公開リポ（agent-base の Issue・コメント・commit）由来で読者が追えないため、会長判断で本文の出典行は非掲載。本文ではリポ名と Issue/PR 番号も伏せている（H7）。この yaml は PR 添付の内部検証記録"
+sources:
+  - id: S01
+    claim: "題材は解決済み Issue #509。正解 PR #512 は 3 ファイル +80 / -4 でマージ済み、マージ commit 7138972 の親が起点 2db7de8"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      echo "$(gh pr view 512 --json state,changedFiles,additions,deletions --jq '"\(.state) \(.changedFiles) +\(.additions)/-\(.deletions)"') parent=$(git rev-parse --short 7138972^)"
+    expect: "MERGED 3 +80/-4 parent=2db7de8"
+  - id: S02
+    claim: "採点テスト（7138972 の tests/test_mycontext_staleness.sh）は修正前の 2db7de8 でも 28 件中 27 件 PASS。落ちるのは C8 の 1 件だけ"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      d=$(mktemp -d); git archive 2db7de8 hooks | tar -x -C "$d"; mkdir -p "$d/tests"; git show 7138972:tests/test_mycontext_staleness.sh > "$d/tests/t.sh"; out=$(bash "$d/tests/t.sh" 2>&1); printf '%s\n' "$out" | grep -E '^  (PASS: [0-9]+ / FAIL|FAIL: C)' | sed 's/^ *//'
+    expect: |-
+      FAIL: C8 2回目 throttled
+      PASS: 27 / FAIL: 1
+  - id: S03
+    claim: "Devin の成果物（deaef4f）に採点テストを当てると 28/28 PASS"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      d=$(mktemp -d); git archive deaef4f hooks | tar -x -C "$d"; mkdir -p "$d/tests"; git show 7138972:tests/test_mycontext_staleness.sh > "$d/tests/t.sh"; bash "$d/tests/t.sh" 2>&1 | grep -E '^  PASS: [0-9]+ / FAIL' | sed 's/^ *//'
+    expect: "PASS: 28 / FAIL: 0"
+  - id: S04
+    claim: "Claude の成果物（7c0dd1f）に採点テストを当てると 28/28 PASS"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      d=$(mktemp -d); git archive 7c0dd1f hooks | tar -x -C "$d"; mkdir -p "$d/tests"; git show 7138972:tests/test_mycontext_staleness.sh > "$d/tests/t.sh"; bash "$d/tests/t.sh" 2>&1 | grep -E '^  PASS: [0-9]+ / FAIL' | sed 's/^ *//'
+    expect: "PASS: 28 / FAIL: 0"
+  - id: S05
+    claim: "両者とも起点 2db7de8 から 1 コミット。diff は Devin 2 files +69 / -6、Claude 2 files +65 / -5"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      for c in deaef4f 7c0dd1f; do echo "$(git rev-parse --short $c^) $(git diff --shortstat 2db7de8 $c | sed 's/^ *//')"; done
+    expect: |-
+      2db7de8 2 files changed, 69 insertions(+), 6 deletions(-)
+      2db7de8 2 files changed, 65 insertions(+), 5 deletions(-)
+  - id: S06
+    claim: "経過時間（起動→コミット）は Devin 約 18 分（00:17→00:35）、Claude 約 13 分（02:12→02:25）でうち人の返答待ち約 11 分。Claude の実作業は約 1 分 15 秒"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      gh api repos/{owner}/agent-base/issues/comments/5971722850 --jq .body | grep -cE '約 18 分（00:17→00:35）|約 13 分（02:12→02:25）※うち人の返答待ち約 11 分|約 1 分 15 秒'
+    expect: "2"
+  - id: S07
+    claim: "コミット時刻は Devin 00:35:07、Claude 02:24:58（いずれも 2026-10-04 JST）"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      for c in deaef4f 7c0dd1f; do TZ=Asia/Tokyo git log -1 --date=format-local:'%Y-%m-%d %H:%M:%S' --format=%cd $c; done
+    expect: |-
+      2026-10-04 00:35:07
+      2026-10-04 02:24:58
+  - id: S08
+    claim: "shell 実行回数は Devin 23 回 / Claude 6 回、テスト実行は両者 1 回。自己修正 0 回同士。人の介入は Devin 0 回 / Claude 1 回"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      gh api repos/{owner}/agent-base/issues/comments/5971722850 --jq .body | grep -cE '^\| shell 実行回数 / テスト実行 \| 23 回 / 1 回 \| 6 回 / 1 回 \|$|^\| B-2 自己修正（テスト失敗→修正） \| 0 回 \| 0 回 \|$|^\| 人の介入 \| 0 回 \| 1 回'
+    expect: "3"
+  - id: S09
+    claim: "Devin は止め指示が届く前にラベル付与・push・PR 作成まで進めた。対話起動（--prompt-file）では accept-edits でも shell が自動許可される。実行中の追加指示は次ターンにキューされ割り込めない"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      gh api repos/{owner}/agent-base/issues/comments/5971722850 --jq .body | grep -cE 'ラベル付与・push・PR #652（止め指示が届く前|実行中の追加指示は次ターンにキューされ割り込めない'
+    expect: "2"
+  - id: S10
+    claim: "Devin が作った PR #652 は 15:35:26Z に作成、26 秒後の 15:35:52Z に draft 化、15:41:23Z に close（UTC）"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      echo "$(gh pr view 652 --json createdAt --jq .createdAt) $(gh api repos/{owner}/agent-base/issues/652/timeline --jq '[.[]|select(.event=="convert_to_draft" or .event=="closed")|.created_at]|join(" ")')"
+    expect: "2026-10-03T15:35:26Z 2026-10-03T15:35:52Z 2026-10-03T15:41:23Z"
+  - id: S11
+    claim: "auto-land は 15 分（900 秒）ごとに起動し、draft の PR は SKIP、条件を満たした PR は squash マージする"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      git show 2661ac7:scripts/auto-land/install-schedule.sh | grep -c '^INTERVAL_SEC=900$'; git show 2661ac7:scripts/auto-land/README.md | grep -cE '^\| SKIP \| draft|^\| MERGE_READY \| .*gh pr merge --squash'
+    expect: |-
+      1
+      2
+  - id: S12
+    claim: "auto-land は PR 作成の約 4 分後（00:39:22 JST）に #652 を拾い、draft という理由で SKIP した"
+    kind: cmd
+    cwd: "$HOME"
+    cmd: |
+      grep -c '^2026-10-04 00:39:22 .*/agent-base#652 \[SKIP\] draft$' Library/Logs/auto-land.out.log
+    expect: "1"
+  - id: S13
+    claim: "shell 変数展開 lint（#649）は実験当夜 2026-10-03 23:53 JST に main へ入った。緊急 override は SHELL_VAR_BRACES_SKIP=1"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      TZ=Asia/Tokyo git log -1 --date=format-local:'%Y-%m-%d %H:%M' --format=%cd 6f1f838; git show 6f1f838:hooks/check-shell-var-braces.sh | grep -c 'SHELL_VAR_BRACES_SKIP:-}" = "1"'
+    expect: |-
+      2026-10-03 23:53
+      1
+  - id: S14
+    claim: "core.hooksPath が main 側の githooks を指し、lint が起点コミットの既存違反で両者のコミットを止めた。Devin は自力で override を発見、Claude は確認を求めて停止。正解 PR の時点にこの lint は無かった"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      gh api repos/{owner}/agent-base/issues/comments/5971722850 --jq .body | grep -cE 'core.hooksPath. が main 側の githooks を指し|Devin は自力で緊急 override .SHELL_VAR_BRACES_SKIP=1. を発見、Claude は確認を求めて停止'
+    expect: "1"
+  - id: S15
+    claim: "claude -w <name> は既存ブランチを使わず worktree-<name> を HEAD から作る。Devin の -w は既存ブランチを使う"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      gh api repos/{owner}/agent-base/issues/comments/5971722850 --jq .body | grep -c 'は既存ブランチを使わず .worktree-<name>. を HEAD から作る（Devin の .-w. は既存ブランチを使う）'
+    expect: "1"
+  - id: S16
+    claim: "Devin の token 数は CLI 出力・ログ・app.devin.ai の Usage 画面のどこにも表示がない。金額 $0 は消費ゼロを意味しない（quota 内利用は金額に出ない）。実験した 10/3・10/4 の金額の増加は全製品 $0"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      gh api repos/{owner}/agent-base/issues/comments/5971849715 --jq .body | grep -cE 'token 数: どこにも表示なし|金額 \$0 は「消費ゼロ」ではない|金額: 10/3・10/4 の増加は全製品 \$0'
+    expect: "3"
+  - id: S17
+    claim: "比較の条件差: effort は Devin High / Claude medium、止め指示は Devin が途中送信 / Claude が初回プロンプト"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      gh api repos/{owner}/agent-base/issues/comments/5971722850 --jq .body | grep -c '条件差\*\*: effort（High vs medium）、止め指示のタイミング'
+    expect: "1"
+  - id: S18
+    claim: "監視がプロセスの生存だけで作業中と判定し、Claude の入力待ちを 10 分以上見逃した。transcript の更新停止で検知するよう直した"
+    kind: manual
+    note: "実験当夜のリポ外の監視スクリプト修正（commit なし）。Issue #22 本文の学び 6 と、S06 の人の返答待ち約 11 分が裏付け"
+  - id: S19
+    claim: "複数行コマンドを行数で数え、テスト実行回数を 4〜5 回と誤報告した（実際は両者 1 回）"
+    kind: manual
+    note: "実験当夜の集計の誤りと訂正（Issue #22 本文の学び 7）。正しい値は S08"
+  - id: S20
+    claim: "Devin は Pro プラン。Usage 画面の Overview は Daily quota 100% used / Weekly quota 81% used、On-demand 残高 $-4.11。CLI 起動時の表示は Pro · 0% remaining のまま動作した"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      gh api repos/{owner}/agent-base/issues/comments/5971849715 --jq .body | grep -cE 'Daily quota 100% used / Weekly quota 81% used、On-demand 残高 \$-4\.11|「Pro · 0% remaining」のまま動作していた'
+    expect: "2"
+  - id: S21
+    claim: "Devin CLI は devin-cli 3000.10.31。既定のモデル設定は Claude Fable が lead の fusion 構成で、そのままでは Claude の token は減らない"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      gh api repos/{owner}/agent-base/issues/comments/5890506451 --jq .body | grep -cE 'devin-cli 3000\.10\.31|Claude Fable が lead → このままでは token は減らない'
+    expect: "2"
+  - id: S22
+    claim: "Claude の上限ヒットは直近 30 日で 12 日分のシグナル"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      gh api repos/{owner}/agent-base/issues/comments/5890506451 --jq .body | grep -c '^| Claude 上限ヒット（30 日） | 12 日分のシグナル'
+    expect: "1"
+  - id: S23
+    claim: "Devin は起動後、リポにある実装用スキル（/impl）を自発的に起動した。止め指示はその後に送信した"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      gh api repos/{owner}/agent-base/issues/comments/5970573413 --jq .body | grep -c 'Devin が自発的に agent-base の `/impl` スキルを起動。止め指示（コミットまで、main・PR・Issue を見ない）は後から送信'
+    expect: "1"
