@@ -20,7 +20,7 @@ version: "1.0"
   - 例外（会長判断のみ）: 出典の大半が非公開 repo 由来で読者が追えないときは本文の出典行を省略できる。その場合 yaml の先頭に `citations_in_article: false` と `citations_note: <理由>` を書き、yaml を PR 添付の検証記録として commit する。`verify-sources.sh` はこの宣言があるときだけ記事⇄yaml の突合を INFO 表示にする（宣言が無ければ不整合は FAIL）。例: 記事 #17（PR #18）
 - **`<!-- 会長: … -->` 型の空欄プレースホルダを記事に残さない**。会長の言葉が要る節は Phase 2 で聞き、Phase 4 で Claude が書く。書いた節の先頭に `<!-- hearing:Hn -->` を置く（会長がどこを直せばよいか分かるように）
 - AI 関与の開示は**書かない**（既定。H5 で会長が変えたときだけ書く）
-- 文体は「です・ます」（既存記事準拠。H6 で変更可）
+- 文体・構成・NG 表現は `docs/style-guide.md` に従う。文体は「です・ます」（H6 で変更可）
 - PII は CLAUDE.md の規約どおり（ユーザー名 `user`、ホスト名 `hostname`、メール不記載）。`/Users/…` の絶対パス、17〜20 桁の ID、`_TOKEN` / `WEBHOOK` / `API_KEY` を含む文字列は書かない
 - 禁止表現: 「初心者向け」「ジュニアエンジニア向け」など読者を見下ろすラベル（memory: `feedback_no_junior_engineer_framing`）
 - frontmatter は `published: false` のまま PR を出す。`true` にするのは会長（Phase 7）
@@ -29,6 +29,7 @@ version: "1.0"
 ## Phase 0: Issue 取得・排他（BLOCKING）
 
 1. `gh issue view <N> --json title,body,labels` で要件を読み、タイトル案・読者・素材の指定・ガードを整理して表示する
+   - テーマが決まっていない（Issue が候補を並べているだけ等）ときは、how-to 型（手順・構築・トラブル解決）の候補を推奨案として先頭に出す（根拠: `docs/style-guide.md` 1 章）
 2. `in-progress` ラベルが無ければ付ける。既にあれば他セッション作業中の可能性を警告して会長に確認する
 3. 前提確認（無ければ止まる）: `~/.config/zenn-pii-blocklist.yaml`、`yq` / `jq`、`python3 -c "import matplotlib"`、`npx zenn preview --port 8000` を起動（`curl -sf localhost:8000/api/articles` が応答するまで）
 4. ブランチ `article/<slug>` を `origin/main` から作る（slug は 12〜50 文字、`a-z0-9-`）
@@ -100,6 +101,7 @@ Phase 1 の実測から候補を作り、`rules/general/option-presentation.md` 
 | 7 | 非公開のまま | `grep -c "^published: false" articles/<slug>.md` | 1 |
 | 8 | Zenn パース | `curl -sf localhost:8000/api/articles/<slug> \| jq -e '.article.slug=="<slug>" and .article.published==false'` | exit 0 |
 | 9 | 図の再現（記事が参照する全図） | `for f in scripts/figures/<slug>-*.py; do n=${f##*-}; python3 "$f" && ls images/<slug>/${n%.py}-*.png \|\| exit 1; done` | exit 0（生成できない図が 1 つでもあれば exit 1） |
+| 9b | style-guide の NG 表現 | `grep -cE "成立させる\|を成立する\|採った\|事実関係が\|記事の山場\|初心者が挑む" articles/<slug>.md` + `grep -c '^title: "# ' articles/<slug>.md`（本文 h1 は code block 内のコメントと区別できないため目視） | 0 / 0 |
 | 10 | pre-git-check | `make -C ~/agent-base pre-git-check` | PASS |
 
 FAIL → 修正 → 再実行（3 回まで）。全 PASS 後、`npx zenn preview` を会長に見せる（`open http://localhost:8000/articles/<slug>`）。
