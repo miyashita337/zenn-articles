@@ -3,7 +3,7 @@ title: "「AIで不労所得」完全自動化ですか？それともタスク�
 emoji: "🔬"
 type: "idea"
 topics: ["claudecode", "個人開発", "ai", "自動化"]
-published: false
+published: true
 ---
 
 ![](/images/ai-company-zero-revenue-autopsy/01-title.png)

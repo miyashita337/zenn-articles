@@ -3,7 +3,7 @@ title: "個人開発SaaSを30日計測して「維持運転」に降格した �
 emoji: "📉"
 type: "idea"
 topics: ["個人開発", "saas", "cloudflare", "マーケティング"]
-published: true
+published: false
 ---
 
 ## 結論から
