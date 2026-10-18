@@ -90,19 +90,47 @@ Phase 1 の実測から候補を作り、`rules/general/option-presentation.md` 
 
 ## Phase 5: 検証（BLOCKING）
 
-| AC | 検証内容 | コマンド | 期待 |
-|---|---|---|---|
-| 1 | 空欄プレースホルダ 0 | `grep -c "<!-- 会長:" articles/<slug>.md` | 0 |
-| 2 | 一人称節（H2〜H4）にヒアリング印 | `for h in H2 H3 H4; do grep -c "<!-- hearing:$h -->" articles/<slug>.md; done` | 各 1 以上（会長が本文を自筆した記事は N/A） |
-| 3 | 記事⇄yaml の出典 id 突合 | `bash scripts/verify-sources.sh <slug> 2>&1 \| grep -c "^FAIL:"` | 0（`citations_in_article: false` の記事は INFO 行が出る） |
-| 4 | 出典の再実行 | `bash scripts/verify-sources.sh <slug>` | exit 0（コマンド不一致・突合不整合のどちらも exit 1） |
-| 5 | PII | `bash hooks/lib/detect-pii.sh articles/<slug>.md sources/<slug>.yaml` | exit 0 |
-| 6 | 禁止表現・機密 | `grep -cE "初心者向け\|ジュニアエンジニア向け\|[0-9]{17,20}\|_TOKEN\|WEBHOOK\|/Users/" articles/<slug>.md sources/<slug>.yaml` | 0 |
-| 7 | 非公開のまま | `grep -c "^published: false" articles/<slug>.md` | 1 |
-| 8 | Zenn パース | `curl -sf localhost:8000/api/articles/<slug> \| jq -e '.article.slug=="<slug>" and .article.published==false'` | exit 0 |
-| 9 | 図の再現（記事が参照する全図） | `for f in scripts/figures/<slug>-*.py; do n=${f##*-}; python3 "$f" && ls images/<slug>/${n%.py}-*.png \|\| exit 1; done` | exit 0（生成できない図が 1 つでもあれば exit 1） |
-| 9b | style-guide の NG 表現 | `grep -cE "成立させる\|を成立する\|採った\|事実関係が\|記事の山場\|初心者が挑む" articles/<slug>.md` + `grep -c '^title: "# ' articles/<slug>.md`（本文 h1 は code block 内のコメントと区別できないため目視） | 0 / 0 |
-| 10 | pre-git-check | `make -C ~/agent-base pre-git-check` | PASS |
+| AC | 検証内容 | 期待 |
+|---|---|---|
+| 1 | 空欄プレースホルダ 0 | 0 |
+| 2 | 一人称節（H2〜H4）にヒアリング印 | 各 1 以上（会長が本文を自筆した記事は N/A） |
+| 3 | 記事⇄yaml の出典 id 突合 | 0（`citations_in_article: false` の記事は INFO 行が出る） |
+| 4 | 出典の再実行 | exit 0（コマンド不一致・突合不整合のどちらも exit 1） |
+| 5 | PII | exit 0 |
+| 6 | 禁止表現・機密 | 各ファイル 0 |
+| 7 | 非公開のまま | 1 |
+| 8 | Zenn パース | exit 0 |
+| 9 | 図の再現（記事が参照する全図） | exit 0（生成できない図が 1 つでもあれば exit 1） |
+| 9b | style-guide の NG 表現（本文 h1 は code block 内のコメントと区別できないため目視） | 0 / 0 |
+| 10 | pre-git-check | PASS |
+
+コマンドは表の外に置く（表の中では `|` を `\|` と書く必要があり、そのままコピーすると grep が何にもマッチせず素通りするため。PR #24 のレビューで判明）。`<slug>` を置き換えて実行する。
+
+```bash
+# AC-1
+grep -c "<!-- 会長:" articles/<slug>.md
+# AC-2
+for h in H2 H3 H4; do grep -c "<!-- hearing:$h -->" articles/<slug>.md; done
+# AC-3
+bash scripts/verify-sources.sh <slug> 2>&1 | grep -c "^FAIL:"
+# AC-4
+bash scripts/verify-sources.sh <slug>
+# AC-5
+bash hooks/lib/detect-pii.sh articles/<slug>.md sources/<slug>.yaml
+# AC-6
+grep -cE -e "初心者向け" -e "ジュニアエンジニア向け" -e "[0-9]{17,20}" -e "_TOKEN" -e "WEBHOOK" -e "/Users/" articles/<slug>.md sources/<slug>.yaml
+# AC-7
+grep -c "^published: false" articles/<slug>.md
+# AC-8
+curl -sf localhost:8000/api/articles/<slug> | jq -e '.article.slug=="<slug>" and .article.published==false'
+# AC-9
+for f in scripts/figures/<slug>-*.py; do n=${f##*-}; python3 "$f" && ls images/<slug>/${n%.py}-*.png || exit 1; done
+# AC-9b
+grep -c -e "成立させる" -e "を成立する" -e "採った" -e "事実関係が" -e "記事の山場" -e "初心者が挑む" articles/<slug>.md
+grep -c '^title: "# ' articles/<slug>.md
+# AC-10
+make -C ~/agent-base pre-git-check
+```
 
 FAIL → 修正 → 再実行（3 回まで）。全 PASS 後、`npx zenn preview` を会長に見せる（`open http://localhost:8000/articles/<slug>`）。
 
