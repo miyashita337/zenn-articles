@@ -45,22 +45,25 @@ mask_for() {
   esac
 }
 
-# blocklist から種別の値配列を取得 (空配列・null 安全)
+# blocklist から種別の値配列を取得 (空配列・null・キーなし安全)
+# 式は jq（python-yq）と Go 版 yq（mikefarah）の共通部分で書く。`[]?` / `empty` は Go 版で構文エラーになる（#30）
 load_values() {
   local key="$1"
   local out
-  if ! out=$(yq -r ".${key}[]? // empty" "$BLOCKLIST" 2>&1); then
+  if ! out=$(yq -r "(.${key} // []) | .[]" "$BLOCKLIST" 2>&1); then
     echo "detect-pii: error loading $key from $BLOCKLIST: $out" >&2
-    exit 2
+    return 1
   fi
   echo "$out"
 }
 
-HOSTNAMES="$(load_values hostnames)"
-IPS="$(load_values ips)"
-EMAILS="$(load_values emails)"
-USERNAMES="$(load_values usernames)"
-TOKENS="$(load_values tokens)"
+# $(...) の中の exit はサブシェルしか抜けないため、失敗は呼び出し側で止める。
+# 止めないと全値が空とみなされ、PII を素通りさせる（#30）
+HOSTNAMES="$(load_values hostnames)" || exit 2
+IPS="$(load_values ips)" || exit 2
+EMAILS="$(load_values emails)" || exit 2
+USERNAMES="$(load_values usernames)" || exit 2
+TOKENS="$(load_values tokens)" || exit 2
 
 if [ -z "$HOSTNAMES$IPS$EMAILS$USERNAMES$TOKENS" ]; then
   # blocklist は存在するが全て空 → 何もしない (設定不足ではないので PASS 扱い)
