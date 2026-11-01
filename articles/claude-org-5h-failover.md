@@ -109,14 +109,15 @@ Windows（PowerShell）の例です。macOS / Linux は README を参照して�
 # 1. インストール（Node 18 以上）
 npm install -g claude-org
 
-# 2. org ごとにトークンを発行（ブラウザで org を選ぶ。約 1 年有効）
+# 2. org ごとに 1 回ずつトークンを発行（ブラウザで org を選ぶ。約 1 年有効）
+#    Team の org で 1 回、Max の org で 1 回実行する
 claude setup-token
 
 # 3. 改行なしで保存（work = Team, personal = Max）
 $d = "$env:USERPROFILE\.claude\org-tokens"
 New-Item -ItemType Directory -Force $d | Out-Null
-Set-Content -NoNewline "$d\work.token" "<発行したトークン>"
-Set-Content -NoNewline "$d\personal.token" "<発行したトークン>"
+Set-Content -NoNewline "$d\work.token" "<Team の org で発行したトークン>"
+Set-Content -NoNewline "$d\personal.token" "<Max の org で発行したトークン>"
 
 # 4. 試す順番を指定して起動
 $env:CLAUDE_ORG_ORDER = "work,personal"
@@ -175,7 +176,7 @@ token 数を突き合わせできた 2,019 件（全 2,326 件の 87%）の集�
 ## まとめ
 
 - Team を先に使い切り、尽きたら Max で続ける。org の切り替えも、セッションの引き継ぎも手作業ゼロになりました
-- Team の週上限に当たった丸 1 日、作業が止まりませんでした
+- Team の週上限に当たっていた約 21 時間も、作業が止まりませんでした
 - 依存パッケージなしの Node CLI です。Windows / macOS / Linux で動きます
 
 ```bash
