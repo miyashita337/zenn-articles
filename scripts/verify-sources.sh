@@ -166,8 +166,8 @@ echo "PASS $pass / FAIL $fail / SKIP $skip"
 # 記事との突合（不整合は FAIL。--only 指定時と記事が無い場合は省略）
 xfail=0
 if [ -f "$ARTICLE" ] && [ -z "$ONLY" ]; then
-  # jq の // は false も既定値に倒すので、== false で明示比較する
-  if [ "$(yq -r 'if .citations_in_article == false then "false" else "true" end' "$YAML")" = "false" ]; then
+  # jq の // は false も既定値に倒すので == false で明示比較する（if-then-end は Go 版 yq で構文エラーになるため使わない）
+  if [ "$(yq -r '.citations_in_article == false' "$YAML")" = "true" ]; then
     echo "INFO: 本文の出典行は非掲載（citations_in_article: false）: $(yq -r '.citations_note // "理由未記入"' "$YAML")"
   else
     ids_article="$(grep '^出典:' "$ARTICLE" | grep -oE 'S[0-9]{2}' | sort -u)"
