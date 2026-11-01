@@ -10,12 +10,19 @@ published: false
 本記事は個人の運用記録です。複数 org の切替・トークン運用・ローカル proxy による認証ヘッダ差し替えは、各読者の環境・契約で利用規約に照らして自己責任で判断してください。本ツールは**自分が所属する org の、自分のトークン同士の切替**だけを扱い、他人のリクエストは中継しません。
 :::
 
+![claude.ai のアカウントメニュー。同じアカウントで Team の org と個人用の org の 2 つに入っている](/images/claude-org-5h-failover/00-org-menu.png)
+*claude.ai のアカウントメニュー。1 つのアカウントで、会社の Team の org と個人用の org の両方に入っている状態*
+
 ## TL;DR
 
-- 会社の **Team org** と個人の **Max org** を併用していると、片方の上限で Claude Code が止まり、org の選び直しとセッションの引き継ぎが毎回発生する
+- 会社の **Team org（もしくは Enterprise）** と個人の **Max org** を併用していると、片方の上限で Claude Code が止まり、org の選び直しとセッションの引き継ぎが毎回発生する
 - `claude` の代わりに `claude-org proxy` と打つだけで、**上限（429）に当たった瞬間に同じリクエストを別 org のトークンで送り直す** CLI `claude-org` を作った
 - 実測 10 日間で自動切替 11 回、上限で作業が止まった回数 **0 回**。止まった原因は 5 時間枠ではなく **週の上限**だった
 - 依存パッケージなしの Node CLI。`npm install -g claude-org`、Windows / macOS / Linux 対応
+
+:::message
+本記事の「Team」「Team org」は、**Enterprise プランの org にも置き換えられます**。どちらも会社が契約する org 単位のプランです（[Claude の料金プラン: Team & Enterprise](https://claude.com/ja/pricing#team-&-enterprise)）。
+:::
 
 ## はじめに
 
@@ -124,8 +131,23 @@ $env:CLAUDE_ORG_ORDER = "work,personal"
 claude-org proxy
 ```
 
+macOS / Linux では手順 3・4 が次のようになります（1・2 は同じ）。
+
+```bash
+# 3. 改行なしで保存し、自分だけが読める権限にする（work = Team, personal = Max）
+mkdir -p ~/.claude/org-tokens
+printf '%s' '<Team の org で発行したトークン>' > ~/.claude/org-tokens/work.token
+printf '%s' '<Max の org で発行したトークン>' > ~/.claude/org-tokens/personal.token
+chmod 600 ~/.claude/org-tokens/*.token
+
+# 4. 試す順番を指定して起動
+export CLAUDE_ORG_ORDER=work,personal
+claude-org proxy
+```
+
+- `chmod 600` は省略できません。macOS / Linux では、他のユーザーも読めるトークンファイルを proxy が使わずに飛ばします（Windows ではこの検査はありません）
 - `CLAUDE_ORG_PREFER` に入るのは org 名 1 つだけです。順番のリストは `CLAUDE_ORG_ORDER` に書きます
-- ずっと使うなら `[Environment]::SetEnvironmentVariable("CLAUDE_ORG_ORDER", "work,personal", "User")`
+- ずっと使うなら、Windows は `[Environment]::SetEnvironmentVariable("CLAUDE_ORG_ORDER", "work,personal", "User")`、macOS / Linux は `export CLAUDE_ORG_ORDER=work,personal` を `~/.zshrc`（bash なら `~/.bashrc`）に書きます
 - `claude-org status` で各 org の認証状態を確認できます
 
 ## 効果: 10 日間の実測
@@ -139,7 +161,7 @@ claude-org proxy
 | 自動切替 | 11 回 |
 | 上限で作業が止まった回数 | **0 回** |
 
-出典: 筆者の Windows 機の claude-org proxy ログ、2026-10-10〜10-19 の集計（S01）
+出典: 筆者の Windows 機の claude-org proxy ログ、2026-10-10〜10-19 の集計 <!-- S01 -->
 
 ### わかったこと: 本当の壁は 5 時間枠ではなく週の上限だった
 
@@ -152,7 +174,7 @@ claude-org proxy
 - 一番驚いたのは、**本人が当日、上限に当たったことを覚えていない**ことです。枯渇したと気づかないまま作業が続いていました
 - Team で使えないモデルを指定したリクエストは Team で 429 になるので、18 回とも Max に回りました
 
-出典: 同ログの 5h utilization・seven_day 判定・モデル別の集計（S02）
+出典: 同ログの 5h utilization・seven_day 判定・モデル別の集計 <!-- S02 -->
 
 | org | リクエスト | 出力 | キャッシュ書込 | キャッシュ読込 |
 |---|---|---|---|---|
@@ -161,7 +183,7 @@ claude-org proxy
 
 token 数を突き合わせできた 2,019 件（全 2,326 件の 87%）の集計です。単位 M は 100 万 token。
 
-出典: 同ログとセッション transcript の usage を突き合わせた集計（S03）
+出典: 同ログとセッション transcript の usage を突き合わせた集計 <!-- S03 -->
 
 計測の範囲: proxy のログが残っていた 10/10 以降、この Windows 機の分だけです。10/1〜10/9 と、proxy を通さず起動したセッションは含みません。
 
