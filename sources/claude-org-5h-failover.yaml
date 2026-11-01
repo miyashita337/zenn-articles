@@ -1,0 +1,19 @@
+# 記事 articles/claude-org-5h-failover.md の出典宣言。
+# 再検証: bash scripts/verify-sources.sh claude-org-5h-failover
+# proxy ログは OS の一時フォルダに置かれ、直近 20 起動分しか残らない（claude-org lib/proxy.js の RUN_DIR_KEEP）。
+# 2026-10-10〜10-19 のログは測定後に入れ替わっており再実行できないため、全件 manual とする。
+slug: claude-org-5h-failover
+measured_at: "2026-10-19"
+sources:
+  - id: S01
+    claim: "2026-10-10〜10-19、筆者の Windows 機 1 台の proxy ログで、Team が処理したリクエスト 1,138 件、Team 上限後に Max が引き継いだリクエスト約 1,100 件、自動切替 11 回、上限で止まった回数 0 回"
+    kind: manual
+    note: "2026-10-19 に claude-org proxy ログ（claude-org-proxy-*/proxy.log の 'via <org> -> <status>' 行）を集計。社内 LT スライド（2026-10）に記載した値と同一"
+  - id: S02
+    claim: "Team の 5h utilization 最大 78%（10/18）、5h 枠への到達 0 回、停止原因は seven_day（10/13 17:38 に到達、10/14 14:31 以降 Team に復帰）、Team 不可モデルのリクエスト 18 回が Max に回った"
+    kind: manual
+    note: "同ログの anthropic-ratelimit-unified-5h-utilization と 429 本文の claim を集計（2026-10-19）"
+  - id: S03
+    claim: "token を突き合わせできた 2,019 件（全 2,326 件の 87%）で、Team 999 件・出力 0.57M・キャッシュ書込 8.6M・キャッシュ読込 162M、Max 1,020 件・0.42M・6.2M・207M"
+    kind: manual
+    note: "同ログと Claude Code セッション transcript の usage を request id で突き合わせて集計（2026-10-19）"
