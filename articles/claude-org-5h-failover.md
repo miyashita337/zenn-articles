@@ -1,5 +1,5 @@
 ---
-title: "Claude Code の 5h 上限で手が止まる問題を、org 自動切替 CLI で潰した話"
+title: "Team の上限に当たっても止まらない。Claude Code を個人の Max へ自動で乗り換える CLI を作った"
 emoji: "🔀"
 type: "tech"
 topics: ["claudecode", "anthropic", "nodejs", "cli", "個人開発"]
@@ -7,153 +7,189 @@ published: false
 ---
 
 :::message
-本記事は個人の運用記録です。複数 org の切替・トークン運用・ローカル proxy による認証ヘッダ差し替えは、各読者の環境・契約で利用規約に照らして自己責任で判断してください。OAuth トークンは本来「Claude Code などネイティブアプリの通常利用」向けの認証手段であり、第三者のリクエストを自分のサブスクリプション credential 経由で流す用途は Anthropic が明示的に禁じています（本ツールは自分の org 同士の切替のみで、他人のリクエストは扱いません）。
+本記事は個人の運用記録です。複数 org の切替・トークン運用・ローカル proxy による認証ヘッダ差し替えは、各読者の環境・契約で利用規約に照らして自己責任で判断してください。本ツールは**自分が所属する org の、自分のトークン同士の切替**だけを扱い、他人のリクエストは中継しません。
 :::
 
 ## TL;DR
 
-- 会社の Team org と個人の org を行き来していると、**5 時間枠の上限**で Claude Code が止まる
-- `CLAUDE_CODE_OAUTH_TOKEN` が保存済みログインより優先される仕様を使い、org ごとのトークンで起動を切り替える CLI `claude-org` を作った
-- さらにローカル proxy を挟む `claude-org proxy` で、**走行中のセッションのまま**上限到達の瞬間に別 org へフェイルオーバーできる
-- npm パッケージとして公開した（`npm i -g claude-org`、依存ゼロ、Win/Mac/Linux）
+- 会社の **Team org** と個人の **Max org** を併用していると、片方の上限で Claude Code が止まり、org の選び直しとセッションの引き継ぎが毎回発生する
+- `claude` の代わりに `claude-org proxy` と打つだけで、**上限（429）に当たった瞬間に同じリクエストを別 org のトークンで送り直す** CLI `claude-org` を作った
+- 実測 10 日間で自動切替 11 回、上限で作業が止まった回数 **0 回**。止まった原因は 5 時間枠ではなく **週の上限**だった
+- 依存パッケージなしの Node CLI。`npm install -g claude-org`、Windows / macOS / Linux 対応
 
 ## はじめに
 
-Claude Code を個人 org と会社 org で併用しています。料金体系の都合上、個人側は Max、会社側は Team の座席で、どちらにも「5 時間ごとの使用量枠」があります。
+<!-- hearing:H2 -->
+Claude Code を毎日使っていて、個人の Max プランでも週の途中で token が尽きるようになりました。そこで会社が契約した Team の org も使い始めました。使ってみた感覚では、Team の 1 席分は Pro プランとほぼ同じ量です。同じメールアドレスで 2 つの org に入っている状態です。
 
-困るのは、長時間の自律実行やレビュー祭りの最中に片方の枠が尽きることです。`claude` には org を切り替えるコマンドがなく、上限に当たると「待つ」しかない。もう片方の org は空いているのに。
+token が足りない問題は、Team を足すことでいったん解決しました。ところが Team と Max の 2 つを使い分け始めると、今度は**使い方そのものに手間がかかる**ようになりました。
 
-セッション履歴は `~/.claude/` 配下で org をまたいで共有されるので、`--resume` で別 org に引き継ぐことは可能です。届かないのは「どの org の認証で起動するか」の切替だけ。届くのは起動前の環境変数のみ —— つまりラッパーを書くのが筋でした。
+## Team と Max を併用して困ったこと
 
-## やりたかったこと
+<!-- hearing:H3 -->
+| 困りごと | 中身 |
+|---|---|
+| 使えないモデルがある | Team では利用できないモデルがある（これは仕方ない） |
+| 切り替えがしんどい | Max と Team の両方を使うと、毎回 org を選び直す |
+| 使用量の上限 | 単発なら平気。並列セッションだとすぐ枯渇し、リセットまで待ち |
+| 引き継ぎが冗長 | セッションを保存 → ログインし直し → 新セッションで読み込み直し、を毎回 |
 
-1. `claude-org auto` で「使える方の org」で起動する
-2. できれば走行中にも切り替えたい（長時間セッションで止まらない）
-3. Win と Mac の両方で同じコマンド名で動く
-4. トークンはローカルのみ、外部に出さない
+欲しかったのは一言でいうと **「Team の token を使っていて、上限に来たら勝手に Max に移ってほしい」** でした。
 
-## 最初のアプローチ: bash + PowerShell の二枚看板
+Claude Code 標準の選択肢は、上限に来たら「リセットまで待つ」か「追加の使用量を買う」です。複数アカウントを `/login` で切り替えることはできますが、セッションの外から手でやる操作です。`claude-org` が足すのは 3 つ目の選択肢、**「もう払っている Max を使う」**です。
 
-最初は `claude-org.sh`（bash 212 行）と `claude-org.ps1`（PowerShell 99 行）を書きました。内部リポの `scripts/` に置いて symlink で `~/.claude/scripts/` に配る運用です。
+## 作ったもの: claude-org
 
-これは動いたのですが、公開を考えると壁がありました。
+コマンドは `claude` の代わりに `claude-org proxy` と打つだけです（短い別名 `ccorg` も入ります）。
 
-- **ハマり 1: Windows は Git Bash 必須**。ps1 版は `probe` / `watch` / `auto` の判定を bash に委譲していたので、素の PowerShell では動きません。「Claude Code を使う層に Git Bash を要求する」のは配布物として弱い
-- **ハマり 2: `date` の方言**。GNU `date -d` と BSD `date -r` を両対応させる処理が地味に脆い
-- **ハマり 3: 通知が Pushover 直結**。個人運用の名残で `pushover-notify.sh` に依存しており、公開物には載せられない
+![Before / After: Team を使い切った瞬間に起きること](/images/claude-org-5h-failover/01-before-after.png)
+*上: 手作業で乗り換える場合（止まっている時間は説明用のイメージ）。下: claude-org proxy の実測。10/13 17:38 に Team が上限に当たって Max に切り替わり、10/14 14:31 以降 Team に戻った*
 
-で、決断。**全ロジックを Node に一本化**しました。Claude Code の動作要件が Node 18+ なので、`npm i -g` すればどの OS でも同じ実装が動き、npm が `.cmd` / `.ps1` の shim を自動生成してくれるため OS 別ラッパー自体が不要になります。
+| | Before（手作業） | After（claude-org proxy） |
+|---|---|---|
+| 上限に当たったとき | エラーで手が止まって、初めて気づく | 当たったことに気づかない |
+| 乗り換え | セッションを保存して、Max でログインし直す | 同じセッションのまま Max で続く |
+| Team が戻ったら | また同じ手順で戻す | 次のリクエストから自動で Team に戻る |
 
-## 決定打 1: env 優先仕様で org を切り替える
+### 対象の人
 
-Claude Code の認証は優先順位があり、`CLAUDE_CODE_OAUTH_TOKEN`（環境変数）は保存済み OAuth ログインより**先に**読まれます。
+- Team の org と、個人の org（Pro / Max）の 2 つを持っている（Team 同士・個人同士の組み合わせでも動きます）
+- Claude Code を CLI で使っている
+- **Free のアカウントでは使えません**。トークンの発行に使う `claude setup-token` は Pro / Max / Team / Enterprise の契約が必要です
 
-```
-claude-org team --resume
-  → CLAUDE_CODE_OAUTH_TOKEN=<team のトークン> claude --resume
-```
+## 仕組み: 上限の応答だけ、別の org で送り直す
 
-トークンは org ごとに `claude setup-token` で発行し（有効期限 1 年）、`~/.claude/org-tokens/<name>.token` に置くだけ。あとは起動時に env を差し込むだけで、サインアウトせず別 org の課金枠で動きます。
-
-## 決定打 2: 5h 枠の状態は応答ヘッダで読む
-
-「その org が使えるか」の判定は、`/v1/messages` に `max_tokens: 1` の最小推論を 1 回投げ、応答ヘッダを読みます。
-
-```
-anthropic-ratelimit-unified-5h-status       allowed / rejected
-anthropic-ratelimit-unified-5h-utilization  0.00-1.00
-anthropic-ratelimit-unified-5h-reset        epoch（枠の復活時刻）
-```
-
-コストは 1 回あたり約 11 トークン。`claude-org probe team` と打てばこの値が 1 行で返り、`auto` はこれを見て preferred org / default org を選びます。
-
-## 決定打 3: proxy で走行中の切替を実現する
-
-`auto` の弱点は「起動時に 1 回しか判定しない」こと。長いセッションの途中で上限に当たると、429 が返って Claude Code が止まります。
-
-そこで `claude-org proxy` は、Claude Code と API の間にセッション専用のローカル proxy（127.0.0.1 の空きポート）を挟みます。
+`claude-org proxy` を実行すると、まず自分の PC の中だけで動く proxy（`127.0.0.1` の空いているポート）を立ち上げ、次に Claude Code を起動して送り先（`ANTHROPIC_BASE_URL`）をその proxy に向けます。
 
 ```mermaid
-flowchart TB
-  U["あなた<br/>(ターミナル)"] -->|claude-org proxy| CO["claude-org"]
-  CO -->|"起動 (ANTHROPIC_BASE_URL=127.0.0.1:port<br/>ダミー認証)"| CC["Claude Code"]
-  CO -->|起動| PX["ローカル proxy<br/>127.0.0.1:port"]
-  CC -->|"API リクエスト<br/>(ダミー認証付き)"| PX
-  T[("~/.claude/org-tokens/<br/>A.token<br/>B.token")] -. 読込 .-> PX
-  PX -->|"認証ヘッダを<br/>org A のトークンに差替"| API["Anthropic API"]
-  PX -.->|"A が上限なら<br/>org B で再送"| API
+flowchart LR
+  subgraph PC["あなたの PC"]
+    CC["Claude Code"]
+    PX["claude-org proxy<br/>127.0.0.1:空いている番号"]
+    T[("トークン置き場<br/>work / personal")]
+  end
+  API["Anthropic API"]
+  CC -->|"① 送り先を proxy に向ける"| PX
+  T -. "② 読む" .-> PX
+  PX -->|"③ トークンを付けて送る"| API
 ```
 
-Claude Code は「本物の API」ではなく手元の proxy に話しかけています。トークンを持つのは proxy だけで、リクエストごとに `Authorization` を差し替えます。だから Claude Code 側は何も知らなくてよく、**セッションを再起動せずに** org が切り替わります。
+`127.0.0.1` は「この PC 自身」を指す住所なので、ほかの PC からは proxy に届きません。proxy は 1 セッションに 1 つで、Claude Code を閉じると一緒に止まります。org のトークンを持つのは proxy だけで、Claude Code 側にはそのセッション限りの合言葉しか渡しません。
 
-上限に当たったときの流れはこうです。
+1 回のリクエストで起きていることはこうです。
 
 ```mermaid
 sequenceDiagram
   participant CC as Claude Code
-  participant PX as ローカル proxy
-  participant API as Anthropic API
-  CC->>PX: POST /v1/messages
-  PX->>API: org A のトークンで転送
-  API-->>PX: 429 または 5h-status=rejected
-  Note over PX: org A を reset 時刻まで「上限中」と記憶<br/>(応答本文は捨てる)
-  PX->>API: 同じリクエストを org B のトークンで再送
-  API-->>PX: 200 (SSE ストリーム)
-  PX-->>CC: そのまま中継 (x-claude-org: B)
-  Note over CC,PX: 以降のリクエストは B を優先。<br/>A は reset 時刻を過ぎたら候補に復帰
-  Note over PX: 全 org が上限 → 503 を返す
+  participant PX as claude-org proxy
+  participant T as Team
+  participant M as Max
+  CC->>PX: ① いつもどおりリクエスト
+  PX->>T: ② Team のトークンで転送
+  T-->>PX: ③ 429（上限）
+  PX->>M: ④ 同じ内容を Max のトークンで送り直す
+  M-->>PX: ⑤ 普通の応答
+  PX-->>CC: ⑥ そのまま返す
 ```
 
-再送するのは `/v1/messages`（推論リクエスト）だけです。上限中の org は順番の末尾に回すだけで消さないので、全滅時の最後の望みとして試されます。SSE のストリーミング応答は加工せずパイプでそのまま流します。
+③〜⑤ は proxy の中だけで起きます。Claude Code には ⑥ しか届かないので、上限に当たったことに気づかないままセッションが続きます。再起動も `--resume` も要りません。
 
-実測では、1 プロセスの Claude Code に stream-json で 2 ターン流し、途中で preferred org を上限扱いにしたところ、同じプロセスのまま別 org のトークンで 2 ターン目が返りました（proxy ログは `POST /v1/messages via team -> 200` → `via max -> 200` の切替行を残します）。
+細かい挙動:
 
-`auto` との違いをまとめると:
+- 上限の判定は、応答ヘッダ `anthropic-ratelimit-unified-5h-status` と 429 の本文で行います
+- 上限中の org は、リセット時刻まで順番の末尾に回すだけで消しません。リセット時刻を過ぎれば元の順番に戻ります
+- ストリーミング（SSE）の応答は加工せずそのまま流します
+- 送り直すときは `Authorization` ヘッダだけを差し替え、`anthropic-beta` などのヘッダは落としません
 
-| 入口 | 走行中の切替 | claude.ai コネクタ MCP | 向く場面 |
-|---|---|---|---|
-| `claude` | なし | 使える | Gmail / Slack 等を使う作業 |
-| `claude-org auto` | 起動時のみ | preferred 時は不可 | 短い作業 |
-| `claude-org proxy` | **自動** | 不可 | 長時間の実装・自律実行 |
+## 導入手順
 
-proxy の弱点はコネクタ MCP と Remote Control が無効化される点です（外部トークン認証扱いになるため `mcp__claude_ai_*` が現れない）。GitHub や context7 のようなローカル MCP は使えます。
+Windows（PowerShell）の例です。macOS / Linux は README を参照してください。
 
-## 使い方
+```powershell
+# 1. インストール（Node 18 以上）
+npm install -g claude-org
+
+# 2. org ごとにトークンを発行（ブラウザで org を選ぶ。約 1 年有効）
+claude setup-token
+
+# 3. 改行なしで保存（work = Team, personal = Max）
+$d = "$env:USERPROFILE\.claude\org-tokens"
+New-Item -ItemType Directory -Force $d | Out-Null
+Set-Content -NoNewline "$d\work.token" "<発行したトークン>"
+Set-Content -NoNewline "$d\personal.token" "<発行したトークン>"
+
+# 4. 試す順番を指定して起動
+$env:CLAUDE_ORG_ORDER = "work,personal"
+claude-org proxy
+```
+
+- `CLAUDE_ORG_PREFER` に入るのは org 名 1 つだけです。順番のリストは `CLAUDE_ORG_ORDER` に書きます
+- ずっと使うなら `[Environment]::SetEnvironmentVariable("CLAUDE_ORG_ORDER", "work,personal", "User")`
+- `claude-org status` で各 org の認証状態を確認できます
+
+## 効果: 10 日間の実測
+
+自分の Windows 機 1 台で、proxy のログが残っていた 2026-10-10〜10-19 の分を集計しました。
+
+| 指標 | 値 |
+|---|---|
+| Team で処理したリクエスト | 1,138 件 |
+| Team が上限に当たった後、Max が引き継いだリクエスト | 約 1,100 件 |
+| 自動切替 | 11 回 |
+| 上限で作業が止まった回数 | **0 回** |
+
+出典: 筆者の Windows 機の claude-org proxy ログ、2026-10-10〜10-19 の集計（S01）
+
+### わかったこと: 本当の壁は 5 時間枠ではなく週の上限だった
+
+<!-- hearing:H4 -->
+作った当初は「5 時間枠で止まる」のを防ぐつもりでした。ところがログを見ると、話は違いました。
+
+- Team の 5 時間枠の使用率は最大 78%（10/18）。この期間、5 時間枠には一度も当たっていません
+- 止まった原因は **7 日間の上限**（ログ上の `claim=seven_day`）でした。10/13（火）17:38 に使い切り、10/14（水）の週リセットまで Team が使えませんでした
+- その間の約 1,100 リクエストを Max が処理し、セッションはそのまま続きました
+- 一番驚いたのは、**本人が当日、上限に当たったことを覚えていない**ことです。枯渇したと気づかないまま作業が続いていました
+- Team で使えないモデルを指定したリクエストは Team で 429 になるので、18 回とも Max に回りました
+
+出典: 同ログの 5h utilization・seven_day 判定・モデル別の集計（S02）
+
+| org | リクエスト | 出力 | キャッシュ書込 | キャッシュ読込 |
+|---|---|---|---|---|
+| Team | 999 | 0.57M | 8.6M | 162M |
+| Max | 1,020 | 0.42M | 6.2M | 207M |
+
+token 数を突き合わせできた 2,019 件（全 2,326 件の 87%）の集計です。単位 M は 100 万 token。
+
+出典: 同ログとセッション transcript の usage を突き合わせた集計（S03）
+
+計測の範囲: proxy のログが残っていた 10/10 以降、この Windows 機の分だけです。10/1〜10/9 と、proxy を通さず起動したセッションは含みません。
+
+## 注意点: proxy モードで変わること
+
+- claude.ai にログインしていれば、**コネクタ（Slack・Notion 等の MCP）と Claude in Chrome も使えます**（v0.5.0 から）。起動時に `claude.ai connectors: on` と出ます。コネクタはログイン中の org のもので、proxy は通りません
+- ログインしていない、または API キーを環境変数に入れている場合は、コネクタは使えません
+- proxy モードでは prompt cache の保持時間と tool search が既定で変わるため、`CLAUDE_CODE_PROMPT_CACHE_TTL=1h` / `ENABLE_TOOL_SEARCH=true` で元に戻しています（自分で設定した値が優先されます）
+- `~/.claude/` の設定とセッション履歴は org 間で共有されるので、proxy を通さない `claude --resume` でも同じセッションを開けます
+- proxy は `127.0.0.1` でだけ待ち受け、トークンはログに出しません
+
+## まとめ
+
+- Team を先に使い切り、尽きたら Max で続ける。org の切り替えも、セッションの引き継ぎも手作業ゼロになりました
+- Team の週上限に当たった丸 1 日、作業が止まりませんでした
+- 依存パッケージなしの Node CLI です。Windows / macOS / Linux で動きます
 
 ```bash
-npm install -g claude-org        # Node 18+
-
-claude setup-token               # org ごとにトークン発行
-printf '%s' '<token>' > ~/.claude/org-tokens/team.token
-
-claude-org list                  # 保存済み org
-claude-org probe team            # 5h 枠の状態を 1 行で
-claude-org proxy --resume        # 走行中自動切替つきで再開（推奨の入口）
-claude-org auto --resume         # 起動時だけ使える方を選ぶ
-claude-org watch                 # preferred の復活を裏で待つ
-claude-org status                # 各 org の認証状態
+npm install -g claude-org
+claude-org proxy
 ```
 
-`watch` の通知は `CLAUDE_ORG_NOTIFY_CMD` に外部化しました。例えば Pushover に投げたいなら `CLAUDE_ORG_NOTIFY_CMD=/path/to/pushover-notify.sh` のように好きな通知手段を差せます（未設定なら端末出力のみ）。
-
-## ハマりポイントまとめ
-
-| ハマり | 内容 | 対策 |
-|---|---|---|
-| ハマり 1 | PowerShell 版が Git Bash に依存して素の Win で動かない | Node に一本化して shim を npm に任せる |
-| ハマり 2 | GNU date / BSD date の方言で HH:MM 変換が崩れる | `new Date(epoch)` に置き換え |
-| ハマり 3 | `apiKeyHelper` 経路で 401 になる | 原因は `x-api-key` 同時送信。proxy で `x-api-key` を落として Bearer 単独で送る |
-| ハマり 4 | OAuth トークンは「Bearer 単独なら 200、x-api-key 混在で 401」という非対称 | 実測 5 パターンで確認してからヘッダ操作を固定 |
-| ハマり 5 | proxy セッションで claude.ai コネクタ MCP が消える | Claude Code の仕様。コネクタが要る作業は素の `claude --resume` で開き直す（履歴は共有） |
-
-## おわりに
-
-「5h 上限で止まる」を待ち時間にしないために、起動時判定（auto）と走行中切替（proxy）の 2 層に分けました。bash から Node への全面移植で配布可能な形になり、テストもスタブ upstream 前提の `node:test` に移して実 API を叩かない CI にしています。
-
-同じ落とし穴にハマる人が減りますように。
+同じように 2 つの org を行き来している人の手間が減れば嬉しいです。
 
 ## 参考リンク
 
-- リポジトリ: https://github.com/miyashita337/claude-org （npm 名 `claude-org`）
-- Claude Code 認証の優先順位: https://code.claude.com/docs/en/authentication
+- リポジトリ: https://github.com/miyashita337/claude-org
+- npm: https://www.npmjs.com/package/claude-org
+- Claude Code の認証: https://code.claude.com/docs/en/authentication
 - Legal & Compliance（OAuth 認証の用途規定）: https://code.claude.com/docs/en/legal-and-compliance
+
+<!-- 出典の再検証: bash scripts/verify-sources.sh claude-org-5h-failover -->
