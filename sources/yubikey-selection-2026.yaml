@@ -4,6 +4,8 @@
 # 調査記録の正本は personal-defense#13 のコメント 4 件（非公開リポ）。
 slug: yubikey-selection-2026
 measured_at: "2026-10-26"
+citations_in_article: false
+citations_note: "会長判断（2026-11-01 のレビュー）: 本文の出典は Sxx ではなく元の記事へのリンクで示す。この yaml は検証記録として残す"
 sources:
   - id: S01
     claim: "Security Key C NFC は Yubico 公式で $29、FW 5.8、パスキー保存数 100、対応は FIDO2・U2F のみ"
@@ -74,10 +76,18 @@ sources:
     kind: manual
     note: "https://pj-tc.com/purchase-guide-yubikey/（販売業者の記事で、中立とは限らない）"
   - id: S18
-    claim: "2026-09-01〜10-22 に公表された国内の情報流出事案は 335 件、うち 10 万件以上は 61 件。10/7〜9 に JPCERT/CC など各機関が注意喚起"
+    claim: "ここ数か月、国内で情報流出の公表が相次いでいる。10 月に IPA が PHP の脆弱性（CVE-2026-109618、CVE-2026-109619）について注意喚起を出した"
     kind: manual
-    note: "https://www.jpcert.or.jp/at/2026/at260030.html 、https://www.gate02.ne.jp/lab/security-article/data-breach-surge-2026-autumn/ ほか（件数は民間の集計）"
+    note: "https://www.ipa.go.jp/security/security-alert/2026/alert20261022.html（2026-11-01 にページタイトルを確認）。件数の集計（335 件など）は本文から外した"
   - id: S19
-    claim: "2026-10-26、GMO インターネットの FX 自動売買などに使われるサーバーサービスから、証券口座などのログイン情報が流出したと報道。金銭被害の報告もある"
+    claim: "GMO インターネットのクラウドサービスが不正アクセスを受け、利用者とみられる個人情報が公開されたと報道"
     kind: manual
-    note: "https://news.yahoo.co.jp/articles/3fe340cc6da5e2c88721e231a7372893df84f173（FNN）"
+    note: "https://news.yahoo.co.jp/pickup/6600878（2026-11-01 に meta description を確認）"
+  - id: S20
+    claim: "PingID は YubiKey を Yubico OTP と FIDO2/U2F のどちらでも登録できる"
+    kind: manual
+    note: "https://docs.pingidentity.com/pingid/pingid_service_management/pid_configuring_yubikey_authentication_yubico_otp.html（2026-11-01 の検索要約）"
+  - id: S21
+    claim: "Microsoft Entra の証明書ベース認証で YubiKey を使うには、PIV が有効でスマートカード証明書を入れたキーが必要"
+    kind: manual
+    note: "https://learn.microsoft.com/entra/identity/authentication/concept-certificate-based-authentication-mobile-ios（2026-11-01 の検索要約）"
