@@ -1,0 +1,83 @@
+# 記事 articles/yubikey-selection-2026.md の出典宣言。
+# 再検証: bash scripts/verify-sources.sh yubikey-selection-2026
+# 価格・在庫・仕様はすべて 2026-10-26 時点の Web ページの観測値で、再実行できないため kind: manual。
+# 調査記録の正本は personal-defense#13 のコメント 4 件（非公開リポ）。
+slug: yubikey-selection-2026
+measured_at: "2026-10-26"
+sources:
+  - id: S01
+    claim: "Security Key C NFC は Yubico 公式で $29、FW 5.8、パスキー保存数 100、対応は FIDO2・U2F のみ"
+    kind: manual
+    note: "https://www.yubico.com/product/security-key-series/security-key-c-nfc-by-yubico-black/ を 2026-10-26 に取得"
+  - id: S02
+    claim: "YubiKey 5C NFC は Yubico 公式で $58。FIDO2・U2F に加えて Yubico OTP・OATH（TOTP/HOTP）・PIV・OpenPGP に対応。5 NFC と 5C NFC は端子以外の仕様が同じ"
+    kind: manual
+    note: "https://www.yubico.com/product/yubikey-5-series/yubikey-5c-nfc/ を 2026-10-26 に確認"
+  - id: S03
+    claim: "Security Key シリーズは PIV・OpenPGP・OATH・OTP 非対応。Okta の「YubiKey」要素は Yubico OTP で、5 シリーズが必要"
+    kind: manual
+    note: "https://support.yubico.com/hc/en-us/articles/4404456942738-FAQ と https://support.yubico.com/hc/en-us/articles/12357152446236-Okta-and-YubiKeys"
+  - id: S04
+    claim: "パスキー保存数は FW 5.7 以降で 100、5.0〜5.6 で 25。ファームウェアは更新できない"
+    kind: manual
+    note: "比較記事 https://www.corbado.com/blog/best-fido2-hardware-security-keys の記載（2026-10-26 の検索要約）と、Yubico の 5.7 発売告知 https://www.yubico.com/blog/now-available-for-purchase-yubikey-5-series-and-security-key-series-with-new-5-7-firmware/"
+  - id: S05
+    claim: "Google Titan（USB-C）は $35・パスキー 250、Token2 T2F2 / PIN+ Dual は約 €26〜$28・パスキー 300"
+    kind: manual
+    note: "https://guptadeepak.com/tools/top-5-hardware-security-keys-2026/ と https://www.pwdfortress.com/en/blog/best-hardware-security-key-comparison-2026（第三者の比較記事、2026-10-26 の検索要約）"
+  - id: S06
+    claim: "マネックス証券の公式 FAQ は、パスキーの保存先として「市販のセキュリティキー（YubiKey等）」を挙げている"
+    kind: manual
+    note: "https://faq.monex.co.jp/faq/show/26093?site_domain=default と https://faq.monex.co.jp/faq/show/24137?site_domain=default"
+  - id: S07
+    claim: "SBI証券・楽天証券は公式ページにセキュリティキーの記載がないが、個人ブログが 2026-09-21 に YubiKey での登録からログインまでの成功を報告"
+    kind: manual
+    note: "https://infomation-sytem-security.hatenablog.com/entry/shoken-passkey-hissuka-yubikey-taiou（キーのモデルは記載なし）"
+  - id: S08
+    claim: "三菱UFJ eスマート証券の公式パスキー案内に「外部セキュリティキー」の選択肢がある"
+    kind: manual
+    note: "https://kabu.com/support/security/passkey.html（本文は直接取得できず、S07 の記事経由で確認）"
+  - id: S09
+    claim: "Apple Account のセキュリティキーは FIDO 認証済みのキーを最低 2 本（最大 6 本）。キーと信頼できるデバイスを全部失うと永久に締め出される可能性がある"
+    kind: manual
+    note: "https://support.apple.com/en-au/102637"
+  - id: S10
+    claim: "Google 高度な保護機能でキーを全部失うと、復旧申請から本人確認まで「数日」かかる"
+    kind: manual
+    note: "https://support.google.com/accounts/answer/7539956?hl=en"
+  - id: S11
+    claim: "Yubico は予備のキーを主のキーと同時に登録することを勧めている"
+    kind: manual
+    note: "https://www.yubico.com/products/spare/ と https://www.yubico.com/blog/lost-yubikey-practices/"
+  - id: S12
+    claim: "2026-10-26 時点の国内在庫: Yubion（正規代理店）は全商品完売表示で 10/22〜11/1 受付停止。ヨドバシは Security Key C NFC 5,570 円が販売終了・5C NFC 11,150 円が販売休止、ビックカメラ 5C NFC 10,560 円は販売終了、ソフマップ・アスクルは在庫切れ、モノタロウは取扱終了、NTT-X は完売、楽天市場の国内正規品も在庫切れ"
+    kind: manual
+    note: "各店の商品ページと検索結果の要約（2026-10-26）。Yubion の受付停止期間は検索要約のみで、本文は HTTP 429 で取得できなかった。ビックカメラの販売終了は目視"
+  - id: S13
+    claim: "Yubion の価格表示は Security Key C NFC（FW5.7）5,900 円、YubiKey 5C NFC（FW5.7）11,700 円（いずれも税込）"
+    kind: manual
+    note: "https://ykey.yubion.com/ の商品ページ（画面のスクリーンショットで確認）"
+  - id: S14
+    claim: "Amazon.co.jp では YubiKey 5 NFC（USB-A）9,793 円、5C（NFC なし）10,936 円、5C NFC 13,919 円が Amazon Global Store の輸入品として在庫あり"
+    kind: manual
+    note: "Amazon.co.jp の商品ページを画面で確認（2026-10-26）。画面のスクリーンショットは届け先が写っているため記事に載せない"
+  - id: S15
+    claim: "Yubico の 2026 年上半期の売上は前年比 -8.8%（Q1 -23.1%、Q2 +9.0%）。Q3 の決算は 2026-11-05"
+    kind: manual
+    note: "https://investors.yubico.com/en/wp-content/uploads/sites/2/2021/10/report-interim-report-q2-2026-260806.pdf と財務カレンダー https://investors.yubico.com/en/investors/financial-calendar/"
+  - id: S16
+    claim: "YubiKey 5C NFC の Amazon US 価格は 2026-01-04 に $68 から $58 に下がった"
+    kind: manual
+    note: "https://camelcamelcamel.com/product/B08DHL1YDL（価格追跡サイト）"
+  - id: S17
+    claim: "国内では 2026 年 3 月から正規代理店で売り切れが頻発し、価格は数年前より約 6 割上がったとされる"
+    kind: manual
+    note: "https://pj-tc.com/purchase-guide-yubikey/（販売業者の記事で、中立とは限らない）"
+  - id: S18
+    claim: "2026-09-01〜10-22 に公表された国内の情報流出事案は 335 件、うち 10 万件以上は 61 件。10/7〜9 に JPCERT/CC など各機関が注意喚起"
+    kind: manual
+    note: "https://www.jpcert.or.jp/at/2026/at260030.html 、https://www.gate02.ne.jp/lab/security-article/data-breach-surge-2026-autumn/ ほか（件数は民間の集計）"
+  - id: S19
+    claim: "2026-10-26、GMO インターネットの FX 自動売買などに使われるサーバーサービスから、証券口座などのログイン情報が流出したと報道。金銭被害の報告もある"
+    kind: manual
+    note: "https://news.yahoo.co.jp/articles/3fe340cc6da5e2c88721e231a7372893df84f173（FNN）"
