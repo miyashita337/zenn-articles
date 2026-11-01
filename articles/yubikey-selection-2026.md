@@ -3,7 +3,7 @@ title: "YubiKey を買おうとしたら売り切れだった件"
 emoji: "🔑"
 type: "idea"
 topics: ["yubikey", "passkey", "fido2", "security", "webauthn"]
-published: false
+published: true
 ---
 
 :::message
