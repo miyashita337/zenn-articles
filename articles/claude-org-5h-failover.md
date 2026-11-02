@@ -1,9 +1,9 @@
 ---
-title: "Team の上限に当たっても止まらない。Claude Code を個人の Max へ自動で乗り換える CLI を作った"
+title: "Claude2アカウント支払ってる人が楽できるコマンド作りました"
 emoji: "🔀"
 type: "tech"
 topics: ["claudecode", "anthropic", "nodejs", "cli", "個人開発"]
-published: false
+published: true
 ---
 
 :::message
@@ -110,45 +110,74 @@ sequenceDiagram
 
 ## 導入手順
 
-Windows（PowerShell）の例です。macOS / Linux は README を参照してください。
+Windows（PowerShell）と macOS / Linux（zsh / bash）の両方の手順を載せています。この記事だけで導入できます。
+
+https://github.com/miyashita337/claude-org
+
+### 1. インストール（共通）
+
+Node.js 18 以上と Claude Code（`claude` コマンド）が入っていることが前提です。`node -v` で確認し、入っていなければ Mac は `brew install node`、Windows は [Node.js の公式サイト](https://nodejs.org/) のインストーラで入れます。
+
+```bash
+npm install -g claude-org
+```
+
+`claude-org` と、短い別名 `ccorg` の 2 つのコマンドが入ります。
+
+### 2. org ごとにトークンを発行（共通）
+
+```bash
+claude setup-token
+```
+
+- **Team の org で 1 回、Max の org で 1 回、合わせて 2 回**実行します
+- ブラウザが開き、org を選ぶ画面が出ます。トークンを作る org を選んで承認し、表示された認証コードをターミナルに貼ります
+- トークン（約 1 年有効）はターミナルに表示されるだけで、どこにも保存されません。次の手順で保存します
+- ターミナルの幅で 2 行に折り返して見えることがあります。保存するときは 1 行につなげます
+
+### 3. トークンを保存して起動
+
+ファイル名の `work` / `personal` は自分で決めるラベルです（ここでは work = Team、personal = Max）。
+
+**Windows（PowerShell）**
 
 ```powershell
-# 1. インストール（Node 18 以上）
-npm install -g claude-org
-
-# 2. org ごとに 1 回ずつトークンを発行（ブラウザで org を選ぶ。約 1 年有効）
-#    Team の org で 1 回、Max の org で 1 回実行する
-claude setup-token
-
-# 3. 改行なしで保存（work = Team, personal = Max）
+# 改行なしで保存
 $d = "$env:USERPROFILE\.claude\org-tokens"
 New-Item -ItemType Directory -Force $d | Out-Null
 Set-Content -NoNewline "$d\work.token" "<Team の org で発行したトークン>"
 Set-Content -NoNewline "$d\personal.token" "<Max の org で発行したトークン>"
 
-# 4. 試す順番を指定して起動
+# 試す順番を指定して起動
 $env:CLAUDE_ORG_ORDER = "work,personal"
 claude-org proxy
 ```
 
-macOS / Linux では手順 3・4 が次のようになります（1・2 は同じ）。
+**macOS / Linux（zsh / bash）**
 
 ```bash
-# 3. 改行なしで保存し、自分だけが読める権限にする（work = Team, personal = Max）
+# 改行なしで保存し、自分だけが読める権限にする
 mkdir -p ~/.claude/org-tokens
 printf '%s' '<Team の org で発行したトークン>' > ~/.claude/org-tokens/work.token
 printf '%s' '<Max の org で発行したトークン>' > ~/.claude/org-tokens/personal.token
 chmod 600 ~/.claude/org-tokens/*.token
 
-# 4. 試す順番を指定して起動
+# 試す順番を指定して起動
 export CLAUDE_ORG_ORDER=work,personal
 claude-org proxy
 ```
 
-- `chmod 600` は省略できません。macOS / Linux では、他のユーザーも読めるトークンファイルを proxy が使わずに飛ばします（Windows ではこの検査はありません）
+- macOS / Linux では **`chmod 600` を省略できません**。`printf` で作ったファイルは他のユーザーも読める権限（644）になり、proxy はそのファイルを `is readable by other users (mode 644); run: chmod 600 ...` と表示して使いません（Windows ではこの検査はありません）
+
+### 4. 確認と常用の設定
+
+```bash
+claude-org status
+```
+
+- 各ラベルが意図した org を指しているか、認証状態と一緒に一覧で確認できます
+- 順番を毎回指定しないで済ませるには、Windows は `[Environment]::SetEnvironmentVariable("CLAUDE_ORG_ORDER", "work,personal", "User")` を 1 回実行します。macOS / Linux は `export CLAUDE_ORG_ORDER=work,personal` を `~/.zshrc`（bash なら `~/.bashrc`）に書きます
 - `CLAUDE_ORG_PREFER` に入るのは org 名 1 つだけです。順番のリストは `CLAUDE_ORG_ORDER` に書きます
-- ずっと使うなら、Windows は `[Environment]::SetEnvironmentVariable("CLAUDE_ORG_ORDER", "work,personal", "User")`、macOS / Linux は `export CLAUDE_ORG_ORDER=work,personal` を `~/.zshrc`（bash なら `~/.bashrc`）に書きます
-- `claude-org status` で各 org の認証状態を確認できます
 
 ## 効果: 10 日間の実測
 
