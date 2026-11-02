@@ -15,7 +15,7 @@ published: true
 
 ## TL;DR
 
-- 会社の **Team org（もしくは Enterprise）** と個人の **Ultra org** を併用していると、片方の上限で Claude Code が止まり、org の選び直しとセッションの引き継ぎが毎回発生する
+- 会社の **Team org（もしくは Enterprise）** と個人の **Ultra org（もしくは Max）** を併用していると、片方の上限で Claude Code が止まり、org の選び直しとセッションの引き継ぎが毎回発生する
 - `claude` の代わりに `claude-org proxy` と打つだけで、**上限（429）に当たった瞬間に同じリクエストを別 org のトークンで送り直す** CLI `claude-org` を作った
 - 実測 10 日間で自動切替 11 回、上限で作業が止まった回数 **0 回**。止まった原因は 5 時間枠ではなく **週の上限**だった
 - 依存パッケージなしの Node CLI。`npm install -g claude-org`、Windows / macOS / Linux 対応
