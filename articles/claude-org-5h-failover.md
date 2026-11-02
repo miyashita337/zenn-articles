@@ -15,7 +15,7 @@ published: true
 
 ## TL;DR
 
-- 会社の **Team org（もしくは Enterprise）** と個人の **Max org** を併用していると、片方の上限で Claude Code が止まり、org の選び直しとセッションの引き継ぎが毎回発生する
+- 会社の **Team org（もしくは Enterprise）** と個人の **Ultra org** を併用していると、片方の上限で Claude Code が止まり、org の選び直しとセッションの引き継ぎが毎回発生する
 - `claude` の代わりに `claude-org proxy` と打つだけで、**上限（429）に当たった瞬間に同じリクエストを別 org のトークンで送り直す** CLI `claude-org` を作った
 - 実測 10 日間で自動切替 11 回、上限で作業が止まった回数 **0 回**。止まった原因は 5 時間枠ではなく **週の上限**だった
 - 依存パッケージなしの Node CLI。`npm install -g claude-org`、Windows / macOS / Linux 対応
@@ -27,35 +27,35 @@ published: true
 ## はじめに
 
 <!-- hearing:H2 -->
-Claude Code を毎日使っていて、個人の Max プランでも週の途中で token が尽きるようになりました。そこで会社が契約した Team の org も使い始めました。使ってみた感覚では、Team の 1 席分は Pro プランとほぼ同じ量です。同じメールアドレスで 2 つの org に入っている状態です。
+Claude Code を毎日使っていて、個人の Ultra プランでも週の途中で token が尽きるようになりました。そこで会社が契約した Team の org も使い始めました。使ってみた感覚では、Team の 1 席分は Pro プランとほぼ同じ量です。同じメールアドレスで 2 つの org に入っている状態です。
 
-token が足りない問題は、Team を足すことでいったん解決しました。ところが Team と Max の 2 つを使い分け始めると、今度は**使い方そのものに手間がかかる**ようになりました。
+token が足りない問題は、Team を足すことでいったん解決しました。ところが Team と Ultra の 2 つを使い分け始めると、今度は**使い方そのものに手間がかかる**ようになりました。
 
-## Team と Max を併用して困ったこと
+## Team と Ultra を併用して困ったこと
 
 <!-- hearing:H3 -->
 | 困りごと | 中身 |
 |---|---|
 | 使えないモデルがある | Team では利用できないモデルがある（これは仕方ない） |
-| 切り替えがしんどい | Max と Team の両方を使うと、毎回 org を選び直す |
+| 切り替えがしんどい | Ultra と Team の両方を使うと、毎回 org を選び直す |
 | 使用量の上限 | 単発なら平気。並列セッションだとすぐ枯渇し、リセットまで待ち |
 | 引き継ぎが冗長 | セッションを保存 → ログインし直し → 新セッションで読み込み直し、を毎回 |
 
-欲しかったのは一言でいうと **「Team の token を使っていて、上限に来たら勝手に Max に移ってほしい」** でした。
+欲しかったのは一言でいうと **「Team の token を使っていて、上限に来たら勝手に Ultra に移ってほしい」** でした。
 
-Claude Code 標準の選択肢は、上限に来たら「リセットまで待つ」か「追加の使用量を買う」です。複数アカウントを `/login` で切り替えることはできますが、セッションの外から手でやる操作です。`claude-org` が足すのは 3 つ目の選択肢、**「もう払っている Max を使う」**です。
+Claude Code 標準の選択肢は、上限に来たら「リセットまで待つ」か「追加の使用量を買う」です。複数アカウントを `/login` で切り替えることはできますが、セッションの外から手でやる操作です。`claude-org` が足すのは 3 つ目の選択肢、**「もう払っている Ultra を使う」**です。
 
 ## 作ったもの: claude-org
 
 コマンドは `claude` の代わりに `claude-org proxy` と打つだけです（短い別名 `ccorg` も入ります）。
 
 ![Before / After: Team を使い切った瞬間に起きること](/images/claude-org-5h-failover/01-before-after.png)
-*上: 手作業で乗り換える場合（止まっている時間は説明用のイメージ）。下: claude-org proxy の実測。10/13 17:38 に Team が上限に当たって Max に切り替わり、10/14 14:31 以降 Team に戻った*
+*上: 手作業で乗り換える場合（止まっている時間は説明用のイメージ）。下: claude-org proxy の実測。10/13 17:38 に Team が上限に当たって Ultra に切り替わり、10/14 14:31 以降 Team に戻った*
 
 | | Before（手作業） | After（claude-org proxy） |
 |---|---|---|
 | 上限に当たったとき | エラーで手が止まって、初めて気づく | 当たったことに気づかない |
-| 乗り換え | セッションを保存して、Max でログインし直す | 同じセッションのまま Max で続く |
+| 乗り換え | セッションを保存して、Ultra でログインし直す | 同じセッションのまま Ultra で続く |
 | Team が戻ったら | また同じ手順で戻す | 次のリクエストから自動で Team に戻る |
 
 ### 対象の人
@@ -90,11 +90,11 @@ sequenceDiagram
   participant CC as Claude Code
   participant PX as claude-org proxy
   participant T as Team
-  participant M as Max
+  participant M as Ultra
   CC->>PX: ① いつもどおりリクエスト
   PX->>T: ② Team のトークンで転送
   T-->>PX: ③ 429（上限）
-  PX->>M: ④ 同じ内容を Max のトークンで送り直す
+  PX->>M: ④ 同じ内容を Ultra のトークンで送り直す
   M-->>PX: ⑤ 普通の応答
   PX-->>CC: ⑥ そのまま返す
 ```
@@ -116,7 +116,7 @@ https://github.com/miyashita337/claude-org
 
 ### 1. インストール（共通）
 
-Node.js 18 以上と Claude Code（`claude` コマンド）が入っていることが前提です。`node -v` で確認し、入っていなければ Mac は `brew install node`、Windows は [Node.js の公式サイト](https://nodejs.org/) のインストーラで入れます。
+Node.js 18 以上と Claude Code（`claude` コマンド）が入っていることが前提です。
 
 ```bash
 npm install -g claude-org
@@ -130,14 +130,11 @@ npm install -g claude-org
 claude setup-token
 ```
 
-- **Team の org で 1 回、Max の org で 1 回、合わせて 2 回**実行します
-- ブラウザが開き、org を選ぶ画面が出ます。トークンを作る org を選んで承認し、表示された認証コードをターミナルに貼ります
-- トークン（約 1 年有効）はターミナルに表示されるだけで、どこにも保存されません。次の手順で保存します
-- ターミナルの幅で 2 行に折り返して見えることがあります。保存するときは 1 行につなげます
+**Team の org で 1 回、Ultra の org で 1 回、合わせて 2 回**実行します。
 
 ### 3. トークンを保存して起動
 
-ファイル名の `work` / `personal` は自分で決めるラベルです（ここでは work = Team、personal = Max）。
+ファイル名の `work` / `personal` は自分で決めるラベルです（ここでは work = Team、personal = Ultra）。
 
 **Windows（PowerShell）**
 
@@ -146,7 +143,7 @@ claude setup-token
 $d = "$env:USERPROFILE\.claude\org-tokens"
 New-Item -ItemType Directory -Force $d | Out-Null
 Set-Content -NoNewline "$d\work.token" "<Team の org で発行したトークン>"
-Set-Content -NoNewline "$d\personal.token" "<Max の org で発行したトークン>"
+Set-Content -NoNewline "$d\personal.token" "<Ultra の org で発行したトークン>"
 
 # 試す順番を指定して起動
 $env:CLAUDE_ORG_ORDER = "work,personal"
@@ -159,7 +156,7 @@ claude-org proxy
 # 改行なしで保存し、自分だけが読める権限にする
 mkdir -p ~/.claude/org-tokens
 printf '%s' '<Team の org で発行したトークン>' > ~/.claude/org-tokens/work.token
-printf '%s' '<Max の org で発行したトークン>' > ~/.claude/org-tokens/personal.token
+printf '%s' '<Ultra の org で発行したトークン>' > ~/.claude/org-tokens/personal.token
 chmod 600 ~/.claude/org-tokens/*.token
 
 # 試す順番を指定して起動
@@ -186,7 +183,7 @@ claude-org status
 | 指標 | 値 |
 |---|---|
 | Team で処理したリクエスト | 1,138 件 |
-| Team が上限に当たった後、Max が引き継いだリクエスト | 約 1,100 件 |
+| Team が上限に当たった後、Ultra が引き継いだリクエスト | 約 1,100 件 |
 | 自動切替 | 11 回 |
 | 上限で作業が止まった回数 | **0 回** |
 
@@ -199,16 +196,16 @@ claude-org status
 
 - Team の 5 時間枠の使用率は最大 78%（10/18）。この期間、5 時間枠には一度も当たっていません
 - 止まった原因は **7 日間の上限**（ログ上の `claim=seven_day`）でした。10/13（火）17:38 に使い切り、10/14（水）の週リセットまで Team が使えませんでした
-- その間の約 1,100 リクエストを Max が処理し、セッションはそのまま続きました
+- その間の約 1,100 リクエストを Ultra が処理し、セッションはそのまま続きました
 - 一番驚いたのは、**本人が当日、上限に当たったことを覚えていない**ことです。枯渇したと気づかないまま作業が続いていました
-- Team で使えないモデルを指定したリクエストは Team で 429 になるので、18 回とも Max に回りました
+- Team で使えないモデルを指定したリクエストは Team で 429 になるので、18 回とも Ultra に回りました
 
 出典: 同ログの 5h utilization・seven_day 判定・モデル別の集計 <!-- S02 -->
 
 | org | リクエスト | 出力 | キャッシュ書込 | キャッシュ読込 |
 |---|---|---|---|---|
 | Team | 999 | 0.57M | 8.6M | 162M |
-| Max | 1,020 | 0.42M | 6.2M | 207M |
+| Ultra | 1,020 | 0.42M | 6.2M | 207M |
 
 token 数を突き合わせできた 2,019 件（全 2,326 件の 87%）の集計です。単位 M は 100 万 token。
 
@@ -226,7 +223,7 @@ token 数を突き合わせできた 2,019 件（全 2,326 件の 87%）の集�
 
 ## まとめ
 
-- Team を先に使い切り、尽きたら Max で続ける。org の切り替えも、セッションの引き継ぎも手作業ゼロになりました
+- Team を先に使い切り、尽きたら Ultra で続ける。org の切り替えも、セッションの引き継ぎも手作業ゼロになりました
 - Team の週上限に当たっていた約 21 時間も、作業が止まりませんでした
 - 依存パッケージなしの Node CLI です。Windows / macOS / Linux で動きます
 
