@@ -1,0 +1,88 @@
+# 記事 articles/transcript-redact-before-s3.md の出典宣言。
+# 再検証: bash scripts/verify-sources.sh transcript-redact-before-s3
+# cmd は筆者の private リポジトリ（AGENT_BASE_DIR）の commit に固定（翌日以降も同じ値になる）。PC の実データ検証・Issue コメント由来は manual。
+# リポジトリ名と Issue / PR 番号は記事に出さない（会長判断 H7）ため、note にも書かない。
+slug: transcript-redact-before-s3
+measured_at: "2026-11-09"
+citations_in_article: false
+citations_note: "出典の大半が筆者の private リポジトリの Issue コメント・PR 本文で読者が追えないため、本文に出典行を置かない（会長判断 2026-11-09）。この yaml は検証記録として commit する"
+sources:
+  - id: S01
+    claim: "2026-11-03 の日次アップロードで、PC の会話記録 525 件のうち 103 件（約 20%）が伏せ漏れスキャン（exit 5）で止まり、1 回約 50 分かかっていた"
+    kind: manual
+    note: "筆者の private リポジトリの Issue 本文（done uploaded=0 skipped=422 failed=103 total=525、所要 48 分）"
+  - id: S02
+    claim: "止まった記録 102 件（1 件は元ファイル削除済み）のスキャンのヒットは 729 行。high_entropy 678 行・97 ファイル、aws_access_key 27 行、google_api_key 21 行、sk_key 2 行、github_token 1 行"
+    kind: manual
+    note: "筆者の private リポジトリの Issue コメント（AC-A 集計、2026-11-03）"
+  - id: S03
+    claim: "high_entropy 678 行の内訳は Google Drive 等の ID 約 350、UUID 入りパス約 100、URL のクエリ値約 80 など識別子で、本物の秘密は Discord の bot トークン 1 種（2 ファイル・4 行）だけ"
+    kind: manual
+    note: "筆者の private リポジトリの Issue コメント（high_entropy の内訳表）"
+  - id: S04
+    claim: "誤検知を調整した後の再スキャンで 102 件中 95 件が exit 0"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      git show -s --format=%b 8d2f309 | grep -o '102 件中 95 件が exit 0'
+    expect: "102 件中 95 件が exit 0"
+  - id: S05
+    claim: "本物は Discord の bot トークン 1 種（2 ファイル）"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      git show -s --format=%b 8d2f309 | grep -o '本物は Discord の bot トークン 1 種（2 ファイル）'
+    expect: "本物は Discord の bot トークン 1 種（2 ファイル）"
+  - id: S06
+    claim: "調整後の 1 回目の実行で 101 件を上げて 56 分、2 回目は Put 0 件で 2 分 23 秒"
+    kind: manual
+    note: "筆者の private リポジトリの Issue コメント（AC-D 実機結果、2026-11-03）"
+  - id: S07
+    claim: "install.sh が辞書ディレクトリを配置しておらず、伏せ処理ゲートが exit 3 になって S3 へのアップロードが全件止まっていた"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      git show -s --format=%b e100d07 | grep -o 'exit 3 になり'
+    expect: "exit 3 になり"
+  - id: S08
+    claim: "トークン類の伏せ規則は 26 本（str / key）"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      git show 124be87:scripts/lib/redact-patterns/10-secrets.tsv | grep -cE '^(str|key) '
+    expect: "26"
+  - id: S09
+    claim: "架空データ 100 MB・辞書 123 規則で、伏せ処理の経過時間は +2%（46.9 秒 → 47.8 秒）、CPU 時間は +26%。語ごとに jq で掛ける形だと 104 規則で +57% だった"
+    kind: manual
+    note: "筆者の private リポジトリの PR 本文の処理時間表（4 コアの Linux コンテナ）"
+  - id: S10
+    claim: "業務辞書入りの PR を一度マージ → revert → 同じ差分で出し直した"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      for s in 0e4ad93 31db8fc c374699; do git show -s --format=%s "$s" | grep -oE '^(feat|Revert)'; done | tr '\n' ' ' | sed 's/ $//'
+    expect: "feat Revert feat"
+  - id: S11
+    claim: "実データ検証その 1: 直近 7 日のコピー 57 ファイル・260 MB、辞書 24 規則。スキャンの dict ヒットは 0 件なのに、別の道具で数え直すと辞書語が 37 ファイル・935 か所に残っていた。時間は辞書なし比 +7.3%（453 秒 → 486 秒）"
+    kind: manual
+    note: "筆者の private リポジトリの Issue コメント（実データ検証、SHA ee3a1a7、2026-11-09）"
+  - id: S12
+    claim: "部分一致フラグ p を足した検証その 2 で 4 ファイル・248 か所に減り、うち人名 244 か所は全角括弧（JSON の \\uXXXX）直後の境界判定バグだった"
+    kind: manual
+    note: "筆者の private リポジトリの Issue コメント（実データ検証その 2、SHA c24b667）"
+  - id: S13
+    claim: "境界修正後の検証その 3 で人名の残りは 7 か所、ID 系 4 か所（いずれも許容と判断）"
+    kind: manual
+    note: "筆者の private リポジトリの Issue コメント（実データ検証その 3、SHA dd55f7c）とマージ条件コメント"
+  - id: S14
+    claim: "PC で回していた週次計測は 1 回約 27 分かかり、メモリも食った（会話ログを S3 に集めてクラウドで測る動機）"
+    kind: manual
+    note: "筆者の private リポジトリの Epic Issue 本文（Sub-issue 表、2026-11-01 派生の記述）"
+  - id: S15
+    claim: "その 3 の残り 11 か所の内訳: 名前の直前に英字が付いたサブエージェント名 3 か所、検証作業で打った確認用文字列 4 か所、r_<ID>.json 形式のファイル名 4 か所"
+    kind: manual
+    note: "筆者の private リポジトリの Issue コメント（実データ検証その 3 とマージ条件、2026-11-09）"
+  - id: S16
+    claim: "記事内の伏せ処理の実行例（架空の辞書 4 規則・架空の入力 2 行）と、xExample Corp_api が伏せられずスキャンも exit 0 になる再現"
+    kind: manual
+    note: "2026-11-09 に commit 124be87 の transcript-redact.sh / transcript-leak-scan.sh へ架空データを流した出力をそのまま掲載"
