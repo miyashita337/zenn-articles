@@ -1,0 +1,86 @@
+# 記事 articles/claude-pr-review-bot-multi-repo.md の出典宣言。
+# 再検証: GH_OWNER=<GitHub ユーザー名> bash scripts/verify-sources.sh claude-pr-review-bot-multi-repo
+# 料金ページは日々変わるため、2026-11-17 に取得した文言を manual で残す（再取得したら fetched を更新する）。
+# 非公開リポの名前は書かない（Issue #42 のガード）。GitHub 検索は件数だけを出す。
+slug: claude-pr-review-bot-multi-repo
+measured_at: "2026-11-17"
+sources:
+  - id: S01
+    claim: "レビュー Bot 導入の PR は 9 リポに 1 本ずつ、計 9 本（同じ作業ブランチ、2026-11-06〜11-09 に作成）"
+    kind: cmd
+    cwd: "$REPO_ROOT"
+    cmd: |
+      gh api -X GET search/issues -f q="is:pr user:${GH_OWNER} head:claude/upbeat-bardeen-wj3j14 created:<=2026-11-09" --jq .total_count
+    expect: "9"
+  - id: S02
+    claim: "9 本のうち main にマージ済みは 2 本（2026-11-17 時点）"
+    kind: cmd
+    cwd: "$REPO_ROOT"
+    cmd: |
+      gh api -X GET search/issues -f q="is:pr is:merged user:${GH_OWNER} head:claude/upbeat-bardeen-wj3j14 merged:<=2026-11-17" --jq .total_count
+    expect: "2"
+  - id: S03
+    claim: "Gemini API の有料枠は前払い（最低 $5）。残高が 0 になると、その請求先アカウントにつながる全プロジェクトの API キーが止まり、HTTP 402 を返す"
+    kind: manual
+    note: |
+      https://ai.google.dev/gemini-api/docs/billing（2026-11-17 時点で https://aistudio.google.com/docs/billing へ転送）を 2026-11-17 に取得。
+      "Upgrading from the Free Tier to the Paid Tier means linking a billing account and prepaying to add a minimum of $5 ... of credits"
+      "... all API keys in all projects linked to that billing account will stop working simultaneously. Requests then fail with an HTTP 402 Payment Required error until you add credits."
+      "the Gemini API will only serve requests if you have a positive Prepay credit balance."
+  - id: S04
+    claim: "Gemini の無料枠は入力が学習に使われる（Used to improve our products: Yes）。有料で最も安いテキスト向けは Gemini 3.1 Flash-Lite（入力 $0.25 / 出力 $1.50、100 万トークンあたり）"
+    kind: manual
+    note: |
+      https://ai.google.dev/gemini-api/docs/pricing（https://aistudio.google.com/docs/pricing へ転送）を 2026-11-17 に取得。
+      各モデル表の行 "Used to improve our products | Free Tier: Yes | Paid Tier: No"。
+      "Gemini 3.1 Flash-Lite ... Input price: Free of charge / $0.25 (text / image / video) ... Output price: Free of charge / $1.50"。
+      同ページで Standard のテキスト用モデル中、有料枠の入出力単価が最も低いのは 3.1 Flash-Lite（3.5 Flash-Lite は $0.30 / $2.50、3.8 Flash は $0.75 / $3.75）。
+  - id: S05
+    claim: "Claude のプランは Pro 月 $20（年払いなら月 $17）、Max 月 $100、Ultra 月 $200。いずれも Claude Code を含む"
+    kind: manual
+    note: |
+      https://claude.com/pricing を 2026-11-17 に取得。
+      "Pro ... $17 Per month with annual subscription discount ( $200 billed up front). $20 if billed monthly."
+      "Max For all-day work $100 Per month" / "Ultra For your longest tasks $200 Per month"
+  - id: S06
+    claim: "claude-code-action は API キーの代わりに OAuth トークン（claude setup-token で発行、Pro / Max / Ultra / Team / Enterprise）で動き、その場合はサブスク枠で動いて API 課金にならない"
+    kind: manual
+    note: |
+      https://code.claude.com/docs/en/github-actions を 2026-11-17 に取得。
+      "an OAuth token that authenticates with your Claude subscription, available on Pro, Max, Ultra, Team, and Enterprise plans. Generate one by running claude setup-token locally."
+      "If you authenticate with an OAuth token, runs use your Claude subscription instead of API billing."
+      "an OAuth token is tied to the subscription of the person who ran claude setup-token"
+  - id: S07
+    claim: "Claude API の従量単価は Sonnet 5.5 が入力 $2 / 出力 $10（100 万トークンあたり）。継続的な無料枠はなく、新規ユーザーにお試しクレジットがあるだけ"
+    kind: manual
+    note: |
+      https://platform.claude.com/docs/en/about-claude/pricing を 2026-11-17 に取得。
+      "Claude Sonnet 5.5 ... $2 / MTok ... $10 / MTok"
+      "Are there free tiers or trials? New users receive free credits to test the API."
+  - id: S08
+    claim: "pr-agent で Claude を使う設定は Anthropic の API キー（[anthropic] KEY）。サブスクの OAuth トークンを使う設定はドキュメントにない"
+    kind: manual
+    note: |
+      https://github.com/qodo-ai/pr-agent/blob/main/docs/docs/usage-guide/changing_a_model.md を 2026-11-17 に取得。
+      Anthropic の節は .secrets.toml の [anthropic] に KEY を書く手順のみ。OAuth / subscription の記載なし。
+  - id: S09
+    claim: "CodeRabbit の Free プランは PR の要約のみ（コードレビューは VS Code 拡張と CLI）。公開リポは OSS 向けの別の上限枠。有料の Essentials は月 $30（年払いなら月 $24）、上限超過分は 1 ファイル $0.25"
+    kind: manual
+    note: |
+      https://docs.coderabbit.ai/management/plans を 2026-11-17 に取得。
+      "Free plan Unlimited public and private repositories, no credit card required. PR summarization only; code reviews are available through the VS Code extension and CLI."
+      "Open source ... OSS reviews use a separate rate-limit tier that varies with the project's community and popularity"
+      "Essentials plan $24 per developer per month billed annually, or $30 month-to-month."
+      https://docs.coderabbit.ai/management/usage-based-reviews: "Cost per reviewed file $0.25"
+  - id: S10
+    claim: "素材セッションでの観測: pr-agent は 3 モデル（gemini-3.7-flash / 3.5-flash / 2.5-flash）すべてで 402 を返した。Claude の自動レビューは push から投稿まで約 50 秒、Sonnet 5.5、ログ上の換算額 $0.10。最初の PR は 3 回のレビューで must / should 0 件に収束した"
+    kind: manual
+    note: "2026-11-06〜11-09 の Claude Code セッション（会長の個人リポ 9 本への導入作業）の Actions ログと PR コメントを 2026-11-17 に確認。対象 PR は非公開リポのため URL は載せない"
+  - id: S11
+    claim: "CodeRabbit の上限到達時の通知: 非公開リポでは 'Review limit reached ... Next included review available in 25 minutes.'、公開リポでは 'You've used all free OSS reviews for now ... Next included review available in 16 minutes.'"
+    kind: manual
+    note: "素材セッション（2026-11-09）の PR に CodeRabbit が投稿したコメントの文言。待ち時間は回ごとに 12〜58 分で変動"
+  - id: S12
+    claim: "非公開リポ 1 本で、Claude のレビューが毎回 2〜3 秒でエラー終了（3 回連続）。エラー本文は safeguards flagged this message"
+    kind: manual
+    note: "素材セッション（2026-11-09）で show_full_output を一時的に有効にした Actions ログ。Request ID 等は伏せる"
