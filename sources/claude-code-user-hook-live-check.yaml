@@ -1,0 +1,101 @@
+# 記事 articles/claude-code-user-hook-live-check.md の出典宣言。
+# 再検証: AGENT_BASE_DIR=<フック置き場リポの clone> bash scripts/verify-sources.sh claude-code-user-hook-live-check
+# 記事にはリポ名・Issue 番号・バケット名・環境名を書かない方針のため、ここでも commit SHA だけで参照する。
+slug: claude-code-user-hook-live-check
+measured_at: "2026-11-17"
+sources:
+  - id: S01
+    claim: "ユーザー設定にフックを書くスニペットと検証テストを入れた変更は 2026-11-04 に main へ入った"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      git log -1 --format=%cs 6267591
+    expect: "2026-11-04"
+  - id: S02
+    claim: "その時点のテストは、スニペットを抜き出して動かすもの 7 件、フック本体のもの 26 件、計 33 件"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      a=$(git show 6267591:tests/cloud-transcript-upload-user-hook.bats | grep -c '^@test')
+      b=$(git show 6267591:tests/cloud-transcript-upload.bats | grep -c '^@test')
+      echo "$a $b $((a+b))"
+    expect: "7 26 33"
+  - id: S03
+    claim: "2026-11-04 時点のスニペットが書く Stop フックは bash -n を通り、SessionStart フックは通らない（&; の構文エラー）"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      d=$(mktemp -d)
+      git show 6267591:docs/transcript-cloud-upload.md | sed -n '/user-hook-snippet:begin/,/user-hook-snippet:end/p' | sed '/^<!--/d; /^```/d' > "$d/s.sh"
+      HOME="$d" CLAUDE_CODE_REMOTE=true bash "$d/s.sh"
+      for k in Stop SessionStart; do bash -n <(jq -r ".hooks.$k[0].hooks[0].command" "$d/.claude/settings.json") 2>/dev/null && echo "$k ok" || echo "$k syntax_error"; done
+      bash -n <(jq -r '.hooks.SessionStart[0].hooks[0].command' "$d/.claude/settings.json") 2>&1 | sed -n 1p | sed 's/^.*: line 1: //'
+      rm -r "$d"
+    expect: |
+      Stop ok
+      SessionStart syntax_error
+      syntax error near unexpected token `;'
+  - id: S04
+    claim: "修正は 2026-11-06 に main へ入り、SessionStart の nohup ... & を ( ) で包んだ。修正後は両方 bash -n を通り、2 回走らせてもフックはそれぞれ 1 件のまま"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      git log -1 --format=%cs 8ce5553
+      d=$(mktemp -d)
+      git show 8ce5553:docs/transcript-cloud-upload.md | sed -n '/user-hook-snippet:begin/,/user-hook-snippet:end/p' | sed '/^<!--/d; /^```/d' > "$d/s.sh"
+      HOME="$d" CLAUDE_CODE_REMOTE=true bash "$d/s.sh"; HOME="$d" CLAUDE_CODE_REMOTE=true bash "$d/s.sh"
+      for k in Stop SessionStart; do bash -n <(jq -r ".hooks.$k[0].hooks[0].command" "$d/.claude/settings.json") 2>/dev/null && echo "$k ok" || echo "$k syntax_error"; done
+      jq -c '[.hooks.Stop, .hooks.SessionStart] | map(length)' "$d/.claude/settings.json"
+      rm -r "$d"
+    expect: |
+      2026-11-06
+      Stop ok
+      SessionStart ok
+      [1,1]
+  - id: S05
+    claim: "修正と同時に、生成コマンドを bash -n にかけるテストと、SessionStart を実際に走らせるテストの 2 件を足し、スニペットのテストは 9 件になった"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      git show 8ce5553:tests/cloud-transcript-upload-user-hook.bats | grep -c '^@test'
+      git show 8ce5553:tests/cloud-transcript-upload-user-hook.bats | grep -c 'bash -n'
+    expect: |
+      9
+      2
+  - id: S06
+    claim: "2026-11-04 時点のテスト 7 件は、SessionStart についてはコマンド文字列にパスが含まれるかと件数を見ていただけで、bash -n にも実行にもかけていなかった"
+    kind: cmd
+    cwd: "$AGENT_BASE_DIR"
+    cmd: |
+      git show 6267591:tests/cloud-transcript-upload-user-hook.bats | grep -c 'bash -n'
+      git show 6267591:tests/cloud-transcript-upload-user-hook.bats | grep -c 'SessionStart\[0\].hooks\[0\].command | contains'
+      git show 6267591:tests/cloud-transcript-upload-user-hook.bats | grep -c 'hooks.SessionStart | length'
+      git show 6267591:tests/cloud-transcript-upload-user-hook.bats | grep -c 'SessionStart'
+    expect: |
+      0
+      1
+      1
+      3
+  - id: S07
+    claim: "実機確認（2026-11-05、クラウドの子セッション）: 1 ターン目の開始時はフック本体のリポが未添付で、子がその場で clone した。1 ターン目の終わりの Stop でログに done: uploaded=1 failed=0 files=1 が 1 行だけ出た。2 ターン目の bash -n で SessionStart が syntax error near unexpected token ; になり、skip 行も無かった"
+    kind: manual
+    note: "親セッションが作った実機確認用の子セッションの会話ログ（2026-11-05 14:34〜14:40 UTC）。1 ターン目の Stop は 14:35:13Z、2 ターン目は親からのメッセージで 14:40 に開始"
+  - id: S08
+    claim: "記事に載せたスニペット（修正版、パスは hooks-repo に置き換え）は Stop / SessionStart とも bash -n を通り、2 回走らせても 1 件ずつ。記事の構文チェック 1 行は修正版を ok、修正前を NG と判定する"
+    kind: cmd
+    cwd: "$REPO_ROOT"
+    cmd: |
+      d=$(mktemp -d)
+      sed -n '/<!-- snippet:begin -->/,/<!-- snippet:end -->/p' articles/claude-code-user-hook-live-check.md | sed '/^<!--/d; /^```/d' > "$d/s.sh"
+      HOME="$d" CLAUDE_CODE_REMOTE=true bash "$d/s.sh"; HOME="$d" CLAUDE_CODE_REMOTE=true bash "$d/s.sh"
+      jq -c '[.hooks.Stop, .hooks.SessionStart] | map(length)' "$d/.claude/settings.json"
+      chk() { jq -r '.hooks[][].hooks[].command' "$1" | while IFS= read -r c; do bash -n <(printf '%s\n' "$c") 2>/dev/null && echo ok || echo NG; done; }
+      chk "$d/.claude/settings.json" | tr '\n' ' '; echo
+      sed 's/run("(nohup bash " + $s + " --ensure-aws <\/dev\/null >\/dev\/null 2>\&1 \&)")/run("nohup bash " + $s + " --ensure-aws <\/dev\/null >\/dev\/null 2>\&1 \&")/' "$d/s.sh" > "$d/old.sh"
+      mkdir -p "$d/o"; HOME="$d/o" CLAUDE_CODE_REMOTE=true bash "$d/old.sh"
+      chk "$d/o/.claude/settings.json" | tr '\n' ' '; echo
+      rm -r "$d"
+    expect: |
+      [1,1]
+      ok ok
+      ok NG
