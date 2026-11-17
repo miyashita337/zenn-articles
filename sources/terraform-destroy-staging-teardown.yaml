@@ -1,0 +1,74 @@
+# 記事 articles/terraform-destroy-staging-teardown.md の出典宣言。
+# 再検証: bash scripts/verify-sources.sh terraform-destroy-staging-teardown
+# 素材は業務の作業セッション 2 本（計画: 2026-10-28〜11-04 / 実行: 2026-11-06〜11-17）の会話ログ。
+# 業務リポ・AWS アカウントを指すため自動再実行できず、全件 kind: manual。
+# 会社名・製品名・アカウント ID・ドメイン・リソース名・同僚名・社内 Issue 番号はこの yaml にも書かない。
+slug: terraform-destroy-staging-teardown
+measured_at: "2026-11-17"
+citations_in_article: false
+citations_note: "出典が業務の作業セッションログ（非公開）で読者が追えないため、会長判断で本文の出典行は非掲載。この yaml は PR 添付の内部検証記録"
+sources:
+  - id: S01
+    claim: "-refresh=false で打った plan -destroy は 94 to destroy。refresh ありで打ち直すと 201 to destroy、Error 0"
+    kind: manual
+    note: "実行セッション 11/04 の plan 結果の貼り付けと Claude の読み取り（計画セッションでも同値）"
+  - id: S02
+    claim: "94 件の plan 出力の 2,814 行目に Error: Invalid AWS Region。既定 provider にリージョン指定が無く、環境変数を入れる前に打っていた"
+    kind: manual
+    note: "計画セッション 11/04 の出力ファイル行番号の確認（両セッションで一致）"
+  - id: S03
+    claim: "数え落ちは既定 provider 配下の 107 件。94 件は 201 件にすべて含まれ、食い違う住所は 0 件"
+    kind: manual
+    note: "計画セッション 11/04 の住所一覧の突き合わせ"
+  - id: S04
+    claim: "state は 253 件（data 51 + 管理資源 202）"
+    kind: manual
+    note: "11/04 の state list の件数"
+  - id: S05
+    claim: "借り手（本体の VPC・DNS ゾーン・Auth0 を使う別 stack）は当初 4 つと見ていたが、実際は 6 つ"
+    kind: manual
+    note: "実行セッション 11/06 の整理。5 番目は別リポの設定ファイルから判明（計画セッション 11/04）"
+  - id: S06
+    claim: "DNS ゾーンの 17 レコードのうち 15 は Kubernetes の external-dns が作ったもの、2 は別 stack のもので、Terraform では消えない"
+    kind: manual
+    note: "実行セッション 11/09〜11/10 のレコード一覧の読み取り"
+  - id: S07
+    claim: "plan -destroy の出力に DB 接続文字列（パスワード入り）の行が 6 行あった"
+    kind: manual
+    note: "計画セッション 11/04 の件数カウント（値は取得していない）"
+  - id: S08
+    claim: "踏み台の EC2 を terminate すると約 1 分後に同じ設定の EC2 が立ち上がった。別リポの Spot Fleet（台数 1 を維持）が持ち主で、その stack は 15 to destroy、うち 1 個は dev と共用"
+    kind: manual
+    note: "実行セッション 11/12 の作業者の報告と plan 結果"
+  - id: S09
+    claim: "S3 の 4 バケットに合計約 450 万オブジェクト。約 63 万件のバケットを空にするのに約 46 分（13:34〜14:20）"
+    kind: manual
+    note: "実行セッション 11/10〜11/11 の作業記録"
+  - id: S10
+    claim: "一時鍵は 1 時間で切れる見込みだったが、destroy は 96 分続いた。鍵切れで destroy が止まり Ctrl+C した"
+    kind: manual
+    note: "実行セッション 11/10〜11/11 の作業記録と Claude の訂正"
+  - id: S11
+    claim: "期限切れルールを入れた退避用バケットで、削除マーカーが消えて空になるまで設定から 5 日かかった"
+    kind: manual
+    note: "実行セッション 11/16〜11/17 の list-object-versions 結果（None None）"
+  - id: S12
+    claim: "Lambda の ENI が in-use のまま残り、destroy が 45 分でタイムアウト。翌朝 available になり再実行で完了"
+    kind: manual
+    note: "実行セッション 11/10〜11/11 の作業記録"
+  - id: S13
+    claim: "本体の手順を 11 の章に分け、16:00 を過ぎたら Aurora と VPC の章には入らない決まりにした"
+    kind: manual
+    note: "Notion 手順書の章立て（実行セッション 11/09 版）"
+  - id: S14
+    claim: "Claude Code の設定の deny に、terraform destroy / apply、aws の delete-* / terminate-*、s3 rm / rb を 12 行入れた（Bash と PowerShell の両方）"
+    kind: manual
+    note: "実行セッション 11/06 の設定変更"
+  - id: S15
+    claim: "削除の見込み額は月数百ドル規模（試算。実請求ではない）"
+    kind: manual
+    note: "計画セッション 10/30 の試算表。金額は会長判断（H7）で桁のみ掲載"
+  - id: S16
+    claim: "stg の state の最終更新は約 1 年前（2025-10）"
+    kind: manual
+    note: "計画セッション 11/02 の実測"
