@@ -1,0 +1,79 @@
+# 記事 articles/voicevox-melt-video-build.md の出典宣言。
+# 再検証: bash scripts/verify-sources.sh voicevox-melt-video-build
+# 素材は筆者の手元 Windows 機での作業（2026-10-23〜10-28）と、その Claude Code セッションの会話ログ。
+# スクリプト本体・動画・ログは業務由来で非公開のため、全件 manual とする。
+slug: voicevox-melt-video-build
+citations_in_article: false
+citations_note: "S01〜S10・S12・S13・S15・S16 は業務由来の非公開の作業ログで、読者が追えないため本文に出典行を置かない（会長判断、2026-11-17 のヒアリング）。S11・S14 は公開情報なので本文にリンクを置く"
+measured_at: "2026-11-17"
+sources:
+  - id: S01
+    claim: "最終版 v1.9 の melt 書き出しは 230.186 秒。基準（ffmpeg 版の実測尺）230.212 秒 ±0.5 秒に PASS、シーン開始 18/18 PASS、検証スクリプトの exit 0"
+    kind: manual
+    note: "2026-10-28 の検証スクリプト出力（ffprobe format=duration と blackdetect）。会話ログに記録"
+  - id: S02
+    claim: "受け入れ条件は 全体尺 基準 ±0.5 秒、各シーン開始 ±0.2 秒。v1.4（24 点）で実測差の最大は 0.083 秒（先頭シーン）、ほかはおおむね ±0.034 秒以内"
+    kind: manual
+    note: "2026-10-27 の検証スクリプト出力（24/24 PASS の表）"
+  - id: S03
+    claim: "melt の書き出し時間は 350 秒版（v1.3）で real 8m20.5s。231 秒版（v1.6〜v1.9）はビルド＋.mlt 生成＋melt の合計で 3 分 26 秒〜5 分 12 秒"
+    kind: manual
+    note: "v1.3 は time コマンドの実測。v1.6 以降はバックグラウンドジョブの起動時刻と完了通知時刻の差（会話ログ、2026-10-28）"
+  - id: S04
+    claim: "版は v0（2026-10-23）から v1.9（2026-10-28）まで、記録に残るだけで 11 版（v0 / v0.1 / v0.2 / v1.2〜v1.9）"
+    kind: manual
+    note: "成果物ファイル名と会話ログ。v1.0・v1.1 は会話ログが圧縮されていて記録が無い"
+  - id: S05
+    claim: "1 章を外して 24 シーン・約 350 秒から 18 シーン・約 231 秒に変えた（v1.6）。コード側は除外シーンのリストに章のシーンを足しただけ"
+    kind: manual
+    note: "v1.5 315.861 秒 / v1.6 231.112 秒（ffmpeg 版、ffprobe）。会話ログ 2026-10-28"
+  - id: S06
+    claim: "frei0r.cairoblend の a_track を 0/1/2 に変えた .mlt を 3 本作り、同じ 1 フレーム（4590）を melt で PNG に出して比べ、a_track=1 が正しかった（2 は真っ黒）"
+    kind: manual
+    note: "会話ログ 2026-10-28 01:59〜02:01 UTC"
+  - id: S07
+    claim: "Git Bash 上の ffmpeg 9.0.1（gyan.dev full_build）で drawtext を使った 1 フレーム抽出を 21 回ループし、ほぼすべて Segmentation fault"
+    kind: manual
+    note: "会話ログ 2026-10-28 01:45 UTC。原因（ffmpeg / fontconfig / freetype のどれか）は未特定"
+  - id: S08
+    claim: "VOICEVOX 0.25.2 の audio_query の kana は「PC 上」（空白あり）で ピイシ'イ、ウエデ、「PC上」（空白なし）で ピイシイジョオデ"
+    kind: manual
+    note: "会話ログ 2026-10-27 07:47 UTC の audio_query 応答"
+  - id: S09
+    claim: "モノラルの同じ wav を melt で書き出すと、モノラル出力 -24.7 dB に対しステレオ出力 -27.7 dB（3 dB 低い）"
+    kind: manual
+    note: "ffmpeg -af volumedetect の mean_volume（会話ログ）"
+  - id: S10
+    claim: "使ったバージョンは VOICEVOX エンジン 0.25.2、Shotcut 26.6.25（同梱 melt 7.40.0）、ffmpeg 9.0.1、Python 3.12、OpenCV 4.13.0"
+    kind: manual
+    note: "各ツールの /version 応答・バージョン表示（会話ログ）"
+  - id: S11
+    claim: "四国めたんの音声は「VOICEVOX:四国めたん」とクレジットを記載すれば商用・非商用で利用できる"
+    kind: cmd
+    cwd: "$HOME"
+    cmd: |
+      curl -sf "https://raw.githubusercontent.com/VOICEVOX/voicevox_resource/b98591264c503db19bb7960b80272d55705b8561/character_info/%E5%9B%9B%E5%9B%BD%E3%82%81%E3%81%9F%E3%82%93_7ffcb7ce-00ec-4bdc-82cd-45a8889e43ff/policy.md" | sed -n 2p
+    expect: "「VOICEVOX:四国めたん」とクレジットを記載すれば、商用・非商用で利用可能です。"
+  - id: S12
+    claim: "VOICEVOX エンジンをバックグラウンドで起動していたところ、メモリ逼迫を理由に Claude Code がそのプロセスを自動で止めた（2026-10-23）"
+    kind: manual
+    note: "会話ログ 2026-10-23 19:57 UTC の task-notification（コマンドの失敗ではなくメモリ逼迫による停止、と記載）"
+  - id: S13
+    claim: "筆者の環境の CapCut 9.0 では、保存時にプロジェクトの draft_content.json が暗号化され、外から書き換えたファイルは UI で保存し直すと読めなくなった"
+    kind: manual
+    note: "筆者の動画作成メモ（CapCut 利用時の知見）。CapCut の公式文書ではない"
+  - id: S14
+    claim: "Shotcut のライセンスは GPL v3"
+    kind: cmd
+    cwd: "$HOME"
+    cmd: |
+      curl -sf "https://raw.githubusercontent.com/mltframework/shotcut/7f7fab384e422e3d01525e50146fdc41be718e06/COPYING" | sed -n 1p | sed 's/^ *//'
+    expect: "GNU GENERAL PUBLIC LICENSE"
+  - id: S15
+    claim: "版ごとの変更と Shotcut 版の尺: v1.2 350.08 秒 / v1.3（用語 21 か所置換・BGM -20→-26 dB）350.016 秒 / v1.4（撮り直し収録に差し替え）315.2 秒 / v1.5（ナレ 1 文変更）315.818 秒 / v1.6（1 章除外、24→18 シーン）231.082 秒 / v1.7〜v1.8 231.082 秒 / v1.9（ナレ 1 文変更）230.186 秒"
+    kind: manual
+    note: "各版の melt 書き出し後の ffprobe format=duration と、会話ログの変更内容（2026-10-27〜28）"
+  - id: S16
+    claim: "Windows PowerShell 5.1 では検品スクリプトが ffmpeg の標準エラー出力を NativeCommandError として扱い落ちる。pwsh（7 系）では通る"
+    kind: manual
+    note: "会話ログ 2026-10-27 11:51 UTC"
