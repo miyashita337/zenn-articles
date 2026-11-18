@@ -84,3 +84,7 @@ sources:
     claim: "非公開リポ 1 本で、Claude のレビューが毎回 2〜3 秒でエラー終了（3 回連続）。エラー本文は safeguards flagged this message"
     kind: manual
     note: "素材セッション（2026-11-09）で show_full_output を一時的に有効にした Actions ログ。Request ID 等は伏せる"
+  - id: S13
+    claim: "外す前の pr-agent は pull_request の opened / reopened / ready_for_review と、/ で始まるコメント（/claude-review と /cursor-review を除く）でだけ起動する設定だった。push（synchronize）では起動しない"
+    kind: manual
+    note: "素材セッション（2026-11-06〜11-09）で確認した各リポの .github/workflows/pr_agent.yml（the-pr-agent/pr-agent v0.36.0）。対象は非公開リポを含むため URL は載せない"
