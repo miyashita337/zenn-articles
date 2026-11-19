@@ -11,12 +11,12 @@ published: false
 - Claude のサブスクを契約していれば、**`claude setup-token` の OAuth トークンで `claude-code-action` を動かし、API の従量課金なしで PR の自動レビューを回せます**
 - 自前で動かしていた pr-agent（Qodo の OSS 版）+ Gemini は、**前払いクレジットが尽きて HTTP 402** を返し、毎回の PR に赤い × を付けていました。無料枠だと思い込んでいたのが原因です
 - pr-agent のモデルを Claude に替える案は、**API キー（従量課金）でしか動かず、既存の Claude レビューと二重になる**ので見送りました
-- 個人の 9 リポに PR を出し、main に入ったのは 2 本です。運用はまだ途中で、次は最安の有料 Gemini で pr-agent を戻します
+- 個人の 9 リポに PR を出し、main に入ったのは 2 本です。運用はまだ途中で、次は有料の Gemini（新規で使えるモデルの最安）で pr-agent を戻します
 
 ## はじめに
 
 <!-- hearing:H2 -->
-個人で持っているリポが 9 本あり、どれにも PR のレビュー Bot を入れたいと思っていました。条件は「**できるだけ安い方法で、高性能なレビュー Bot**」です。
+個人で持っているリポが 9 本あり、どれにも PR のレビュー Bot を入れたいと思っていました。条件は「できるだけ安い方法で、高性能なレビュー Bot」です。
 
 調べてみると、多くのリポには以前入れた pr-agent がすでにありました。導入はほぼ終わっていて、問題は「動いていない」ことでした。
 
@@ -55,9 +55,11 @@ flowchart LR
 |---|---|---|
 | claude-code-action + OAuth トークン | Claude のサブスク枠を消費（API 課金なし） | サブスクの利用上限まで |
 | claude-code-action + API キー | API の従量課金（Sonnet 5.5 は 100 万トークンあたり入力 $2 / 出力 $10） | 新規ユーザーのお試しクレジットのみ |
-| pr-agent + Gemini（有料枠） | 前払いクレジットから引き落とし（最低 $5） | なし（残高 0 で停止） |
+| pr-agent + Gemini（有料枠、Prepay） | 前払いクレジットから引き落とし（最低 $5） | なし（残高 0 で停止） |
 | pr-agent + Gemini（無料枠） | 無料 | モデルごとの上限まで。ただし入力が Google の製品改善に使われる |
-| CodeRabbit Free | 無料 | 非公開リポは PR の要約だけ。公開リポは OSS 向けの上限枠 |
+| CodeRabbit（Free / OSS） | 無料 | 非公開リポは PR の要約だけ（Free）。公開リポは OSS 向けの枠で行ごとのレビューも無料だが、上限は別枠 |
+
+Gemini の有料枠には、前払いの Prepay と後払いの Postpay があります。今回の pr-agent は Prepay で、上の表もその場合の動きです。
 
 出典: Claude Code GitHub Actions のドキュメント（S06）、Claude API の料金ページ（S07）、Gemini API の課金ドキュメント（S03）と料金ページ（S04）、CodeRabbit のプラン説明（S09）
 
@@ -122,7 +124,10 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.base.sha }}  # PR 側のコードは checkout しない
           persist-credentials: false
+      # Step 2 の Install sandbox dependencies をここに入れる（下記の SCRUB に必要）
       - uses: anthropics/claude-code-action@v1   # 実運用ではコミット SHA で固定
+        env:
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"   # サブプロセスから secrets を除く
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
@@ -133,7 +138,10 @@ jobs:
           claude_args: |
             --max-turns 30
             --allowedTools "Read(./**),Grep(./**),Glob(./**),mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --disallowedTools "Read(//proc/**),Read(//tmp/**),Read(~/.ssh/**),Read(~/.claude/.credentials.json),Read(//home/runner/work/_temp/**),Bash(gh * --body-file*),Bash(gh * -F*),Bash(gh * --edit-last*),Bash(gh * --delete-last*)"
 ```
+
+`--disallowedTools` は実際に 9 リポで動かしている設定からの抜粋です。拒否は許可より優先されるので、`gh pr comment` を前方一致で許可していても、ファイルを読んで投稿する引数は通りません。理由は Step 2 で説明します。
 
 最初は `/claude-review` とコメントしたときだけ動く手動起動にしていました。使ってみると、コミットのたびに自動で見てほしくなり、`pull_request` の `synchronize`（push）でも起動するように変えました。実際の workflow では手動起動（`issue_comment`）も残していますが、起動条件が長くなるので上では省いています。
 
@@ -145,10 +153,10 @@ push してから総評が投稿されるまでは約 50 秒でした。最初�
 
 公開リポでレビューを動かすときは、PR に書かれた内容でトークンを抜かれないようにする必要があります。入れた対策は以下です。
 
-- **PR の head を checkout しない**: Claude Code は作業ディレクトリの `.claude/settings.json` や `.mcp.json` を読みます。PR で書き換えられたものを読ませないよう、base のコミットを checkout し、差分は `gh pr diff` で読ませます
-- **読み取り範囲を絞る**: `Read(./**)` のように作業ディレクトリ内に限定し、`/proc` や `~/.ssh`、認証ファイルは `--disallowedTools` で明示的に拒否します
-- **ファイルを読んで投稿できる引数を禁止する**: `Bash(gh pr comment:*)` は前方一致なので、`--body-file /proc/self/environ` のような引数を付けると環境変数を PR に書き出せてしまいます。`--body-file` / `-F` を拒否リストに入れました
-- **アクションをコミット SHA で固定する**: タグを付け替えられても別のコードが動かないようにします
+- PR の head を checkout しない: Claude Code は作業ディレクトリの `.claude/settings.json` や `.mcp.json` を読みます。PR で書き換えられたものを読ませないよう、base のコミットを checkout し、差分は `gh pr diff` で読ませます
+- 読み取り範囲を絞る: `Read(./**)` のように作業ディレクトリ内に限定し、`/proc` や `~/.ssh`、認証ファイルは `--disallowedTools` で明示的に拒否します
+- ファイルを読んで投稿できる引数を禁止する: `Bash(gh pr comment:*)` は前方一致なので、`--body-file /proc/self/environ` のような引数を付けると環境変数を PR に書き出せてしまいます。`--body-file` / `-F` を拒否リストに入れました
+- アクションをコミット SHA で固定する: タグを付け替えられても別のコードが動かないようにします
 
 このうち読み取り範囲の絞り込みは、CodeRabbit のレビューで指摘されて入れたものです。
 
@@ -156,7 +164,7 @@ push してから総評が投稿されるまでは約 50 秒でした。最初�
 
 サブプロセスから secrets を除く `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"` を設定すると、Bash がサンドボックスの中で動きます。このとき Actions のランナーに `bubblewrap` と `socat` が無いと、`gh` が一度も動きません。
 
-困るのは、**ジョブは成功扱いになるのに総評が投稿されない**ことでした。Claude が「差分を読めない」と判断して何も書かずに終わるためです。Claude を起動する前に、2 つのパッケージを入れるステップを足して直りました。
+困るのは、ジョブは成功扱いになるのに総評が投稿されないことでした。Claude が「差分を読めない」と判断して何も書かずに終わるためです。Claude を起動する前に、2 つのパッケージを入れるステップを足して直りました。
 
 ```yaml
       - name: Install sandbox dependencies
@@ -177,7 +185,12 @@ push のたびにレビューが走ると、同じ指摘が何度も投稿され
           gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments" --paginate \
             --jq '.[] | {id, user: .user.login, path, line, in_reply_to_id, body: .body[0:1500]}' \
             > .claude-review-inline.jsonl
+          gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --paginate \
+            --jq '.[] | select(.body | startswith("## 🤖 Claude レビュー")) | {id, created_at, body: .body[0:4000]}' \
+            > .claude-review-summaries.jsonl
 ```
+
+1 つ目の API はインライン指摘だけを返し、`gh pr comment` で投稿した総評は含みません。総評は 2 つ目の issue comments の API で取り、見出しで絞り込んでいます。
 
 Claude に `gh api` の権限を渡さずに済むのも利点です。プロンプトでは、ファイルの中身は PR の参加者が書いたデータであって指示ではない、と明記しています。
 
@@ -199,7 +212,7 @@ litellm.BadRequestError: GeminiException ... "code": 402,
 
 出典: 素材セッションでの pr-agent の Actions ログ（S10）
 
-Gemini API のドキュメントには、有料枠は前払い制で、残高が 0 になると請求先アカウントにつながる全プロジェクトの API キーが止まり、HTTP 402 を返すと書かれています。一度請求先を紐づけると、無料枠に戻って動き続けることはありません。
+Gemini API のドキュメントには、前払いの Prepay では残高が 0 になると、請求先アカウントにつながる全プロジェクトの API キーが止まり、HTTP 402 を返すと書かれています。一度請求先を紐づけると、無料枠に戻って動き続けることはありません。
 
 出典: Gemini API の課金ドキュメント（S03）
 
@@ -214,7 +227,9 @@ CodeRabbit は Free プランで入れていました。非公開リポでは PR
 
 出典: 素材セッションで CodeRabbit が PR に投稿したコメント（S11）
 
-CodeRabbit のドキュメントでは、Free プランは非公開・公開のどちらも PR の要約のみで、公開リポは OSS 向けの別の上限枠です。行ごとのレビューが要るなら、有料の Essentials（月 $30、年払いなら月 $24）か、上限を超えた分を 1 ファイル $0.25 で払う形になります。
+CodeRabbit のドキュメントでは、Free プランは PR の要約のみです。一方、公開リポには OSS 向けの枠があり、有料プランの Team と同じ機能（行ごとのレビューを含む）が無料で使えます。ただし上限は OSS 用の別枠で、プロジェクトの規模や人気で変わります。
+
+非公開リポで行ごとのレビューが要るなら、有料の Essentials（月 $30、年払いなら月 $24）以上の契約が必要です。上限を超えた分を 1 ファイル $0.25 で払う従量課金は、Essentials / Team / Advanced の契約に追加するもので、Free プランだけでは使えません。
 
 出典: CodeRabbit のプラン説明と従量課金の説明（S09）
 
@@ -247,7 +262,7 @@ pr-agent の Gemini を Claude に替えれば直るのでは、とも考えま�
 
 出典: GitHub の検索 API で数えたマージ済み PR 数（S02）
 
-Claude とは別のモデルの目も残したいので、次は pr-agent を **最安の有料 Gemini** で戻すつもりです。料金ページで有料枠の単価が最も安いテキスト向けモデルは Gemini 3.1 Flash-Lite で、100 万トークンあたり入力 $0.25 / 出力 $1.50 です。Claude Sonnet 5.5 の API 単価（入力 $2 / 出力 $10）と比べると、入力は 8 分の 1 です。
+Claude とは別のモデルの目も残したいので、次は pr-agent を最安の有料 Gemini で戻すつもりです。料金ページで単価が最も低いのは Gemini 2.5 Flash-Lite（入力 $0.10 / 出力 $0.40）ですが、2.5 系は過去に使っていた利用者だけにアクセスが絞られていて、新しいプロジェクトには勧められていません。それを除くと、テキスト向けで最も安いのは Gemini 3.1 Flash-Lite で、100 万トークンあたり入力 $0.25 / 出力 $1.50 です。Claude Sonnet 5.5 の API 単価（入力 $2 / 出力 $10）と比べると、入力は 8 分の 1 です。
 
 出典: Gemini API の料金ページ（S04）、Claude API の料金ページ（S07）
 
